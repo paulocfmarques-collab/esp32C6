@@ -4,13 +4,15 @@
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
 
-#define RED     0
-#define GREEN   1
-#define BLUE    2
-#define YELLOW  3
-#define CYAN    4
-#define MAGENTA 5
-#define WHITE   6
+#define RED         0
+#define GREEN       1
+#define BLUE        2
+#define YELLOW      3
+#define CYAN        4
+#define MAGENTA     5
+#define WHITE       6
+
+#define RGB_LED_PIN 8
 
 class RGBLed
 {
@@ -36,7 +38,7 @@ public:
 
 private:
     Adafruit_NeoPixel pixel =
-        Adafruit_NeoPixel(1, 8, NEO_GRB + NEO_KHZ800);
+        Adafruit_NeoPixel(1, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
 
     uint8_t currentBrightness = 50;
     void setColorByEnum(uint8_t color);

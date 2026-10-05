@@ -5,52 +5,42 @@
 #include <Arduino_GFX_Library.h>
 #include <vector>
 
-#define BLACK   0x0000
-#define WHITE   0xFFFF
-#define RED     0xF800
-#define GREEN   0x07E0
-#define BLUE    0x001F
-#define YELLOW  0xFFE0
-#define CYAN    0x07FF
-#define MAGENTA 0xF81F
-#define ORANGE  0xFD20
-
-class DisplayUtil
-{
-public:
-    DisplayUtil();
-
-    void begin();
-
-    void clear();
-
-    void print(String text);
-
-    void println(String text);
-
-    void setTextColor(uint16_t color);
-
-    void setBackgroundColor(uint16_t color);
-
-    void setTextSize(uint8_t size);
-
-    void setRotation(uint8_t rotation);
-
-    void showClock(String dateTime);
-
-    Arduino_ST7789 *getDisplay();
-
+class DisplayUtil {
 private:
-    Arduino_ST7789 *gfx;
+    Arduino_ST7789* gfx;
     std::vector<String> lines;
-
     uint16_t textColor;
     uint16_t backgroundColor;
-
     uint8_t textSize;
+    
+    String ultimaHora;
+    String ultimaData;
 
-    void redraw();
+    int historicoRSSI[50]; // Tamanho fixo do array explícito
+    int ponteiroHistorico;
+
+    bool sdGravandoAnimacao;
+    uint32_t fimAnimacaoSD;
+
+public:
+    DisplayUtil();
+    void begin();
+    void clear();
+    void setTextColor(uint16_t color);
+    void setBackgroundColor(uint16_t color);
+    void setTextSize(uint8_t size);
+    void setRotation(uint8_t rotation);
+    
+    void showClock(String dateTime);
+    void desenharMatrixScreensaver(); 
+    void dispararAnimacaoGravacaoSD(); 
+    
+    void print(String text);
+    void println(String text);
     void addLine(String line);
+    void redraw();
+    
+    Arduino_ST7789* getDisplay();
 };
 
 #endif

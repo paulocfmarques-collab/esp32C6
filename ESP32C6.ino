@@ -4,6 +4,8 @@
 #include "NTPUtil.h"
 #include "SDUtil.h"
 #include "CommandProcessor.h"
+#include "OTAManager.h"
+#include "ClimaManager.h"
 #include <WiFi.h>
 
 DisplayUtil display;
@@ -13,32 +15,40 @@ NTPUtil ntp;
 SDUtil sd;
 CommandProcessor commandProcessor(display, gateway, ntp, rgbLed, sd);
 
+bool otaInicializadoCompleto = false;
+uint32_t tempoUltimoComando = 0; // Monitor de ociosidade
+
 void setup() 
 {
-  String text;
   Serial.begin(115200);
-  delay(500); 
+  delay(100); 
 
-  Serial.println("----------------------------------------------------------------------------------------");
   display.begin();
-  Serial.println("-----------");
-  display.println("-----------");
-  display.println("Display ok!");
-  Serial.println("Display ok!");
+  display.setRotation(1); 
+  display.clear();
+  display.println("Sistema Inicializando...");
+  delay(200); 
+
+  commandProcessor.begin();
+  delay(100);
+
   rgbLed.begin();
   gateway.begin();
-  commandProcessor.begin();
 
   if (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED)
   {
+    ntp.carregarConfiguracoes();
     ntp.initNTP();
+    
+    // Sincroniza o clima logo após obter o horário correto da rede
+    ClimaManager::atualizar();
+    
+    OTAManager::begin("ESP32-C6-Gateway");
+    otaInicializadoCompleto = true;
   }
-
-  display.println("Gateway ok!");
-  Serial.println("Gateway ok!");
-  Serial.println("----------------------------------------------------------------------------------------");
-
+  tempoUltimoComando = millis();
 }
+
 
 void loop() 
 {
@@ -48,29 +58,55 @@ void loop()
   String comando;
 
   gateway.handleClient();
+  commandProcessor.update();  
 
+  if (otaInicializadoCompleto && WiFi.status() == WL_CONNECTED) 
+  {
+    OTAManager::handle();
+    ClimaManager::atualizar(); // Mantém o clima sincronizado a cada 15 min
+  }
+  else if (!otaInicializadoCompleto && WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED)
+  {
+    OTAManager::begin("ESP32-C6-Gateway");
+    otaInicializadoCompleto = true;
+  }
+
+  // Se receber comando UDP, zera o temporizador do Screensaver e acorda o display
   if (gateway.receiveCommand(comando))
   {
     display.setRotation(0);
     showingClock = false;
     commandProcessor.executeCommand(comando);
     responseUntil = millis() + 10000;
+    tempoUltimoComando = millis(); // Reseta Protetor de Tela
   }
 
   commandProcessor.update();
 
+  // Controle de estados da tela (Console Log -> Relógio/Dashboard -> Protetor de Tela)
   if (!showingClock && static_cast<int32_t>(millis() - responseUntil) >= 0)
   {
-    display.setRotation(1);
     showingClock = true;
+    display.setRotation(1);
+    display.clear(); 
     lastClockUpdate = 0;
   }
 
-  if (showingClock && millis() - lastClockUpdate >= 1000)
+  if (showingClock) 
   {
-    String dateTime;
-    ntp.getDateTime(dateTime, 10);
-    display.showClock(dateTime);
-    lastClockUpdate = millis();
+    // Se estiver ocioso há mais de 60 segundos, roda a cascata Sci-Fi hacker
+    if (millis() - tempoUltimoComando > 900000) 
+    {
+      display.desenharMatrixScreensaver();
+      lastClockUpdate = millis(); // Evita desenhar o relógio por cima
+    } 
+    // Caso contrário, renderiza o painel completo atualizado de 1 em 1 segundo
+    else if (millis() - lastClockUpdate >= 1000) 
+    {
+      String dateTime;
+      ntp.getDateTime(dateTime, 10);
+      display.showClock(dateTime);
+      lastClockUpdate = millis();
+    }
   }
 }
