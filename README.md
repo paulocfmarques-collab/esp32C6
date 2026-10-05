@@ -58,63 +58,54 @@ The ESP32-C6 IoT Gateway & Control System is a sophisticated embedded applicatio
 
 ### High-Level Architecture Diagram
 
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│                        ESP32-C6 Control System                     │
-├────────────────────────────────────────────────────────────────────┤
-│                                                                    │
-│  ┌──────────────────┐      ┌──────────────────┐                   │
-│  │  WiFi Gateway    │      │  Display Manager │                   │
-│  │  - Station/AP     │      │  - Clock Display │                   │
-│  │  - UDP Receiver   │      │  - Status Lines │                   │
-│  │  - Portal Server  │      │  - Rotation     │                   │
-│  └────────┬─────────┘      └────────┬─────────┘                   │
-│           │                          │                            │
-│           └──────────────┬───────────────┘                            │
-│                          │                                        │
-│                ┌─────────▼─────────┐                                │
-│                │ Command Processor│                                │
-│                │ - Parse commands │                                │
-│                │ - Execute actions│                                │
-│                │ - Log events     │                                │
-│                └─────────┬─────────┘                                │
-│                          │                                        │
-│          ┌───────────────┼───────────────┬───────────────┐          │
-│          │               │               │               │          │
-│     ┌────▼────┐   ┌────▼─────┐   ┌────▼─────┐  ┌────▼─────┐      │
-│     │ RGB LED │   │ SD Logic │   │ NTP Time │  │ System   │      │
-│     │ Control │   │ Logger   │   │ Sync     │  │ Monitor  │      │
-│     └─────────┘   └──────────┘   └──────────┘  └──────────┘      │
-│                                                                    │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph ESP32C6["ESP32-C6 Control System"]
+        WiFi["WiFi Gateway<br/>- Station/AP<br/>- UDP Receiver<br/>- Portal Server"]
+        Display["Display Manager<br/>- Clock Display<br/>- Status Lines<br/>- Rotation"]
+        
+        WiFi --> CMD["Command Processor<br/>- Parse commands<br/>- Execute actions<br/>- Log events"]
+        Display --> CMD
+        
+        CMD --> LED["RGB LED Control"]
+        CMD --> SD["SD Logic Logger"]
+        CMD --> NTP["NTP Time Sync"]
+        CMD --> Monitor["System Monitor"]
+    end
 ```
 
 ### Layered Architecture
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                     APPLICATION LAYER                       │
-│  ESP32C6.ino                                               │
-│  - setup()                                                  │
-│  - loop()                                                   │
-│  - system orchestration                                     │
-├──────────────────────────────────────────────────────────────┤
-│                    SERVICE LAYER                            │
-│  CommandProcessor | ESP32Gateway | DisplayUtil               │
-│  - commands       | - WiFi       | - TFT screen             │
-│  - logging        | - UDP        | - clock display          │
-│  - blinking       | - portal     | - text output            │
-├──────────────────────────────────────────────────────────────┤
-│                     UTILITY LAYER                          │
-│  RGBLed | NTPUtil | SDUtil                                  │
-│  - LED effects    | - time sync | - SD file ops             │
-├──────────────────────────────────────────────────────────────┤
-│               HARDWARE ABSTRACTION / DRIVERS                │
-│  Arduino Core / WiFi / SPI / SD / Adafruit NeoPixel         │
-├──────────────────────────────────────────────────────────────┤
-│                      HARDWARE LAYER                         │
-│  ESP32-C6 | ST7789 TFT | RGB LED | microSD | WiFi network   │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph APP["APPLICATION LAYER"]
+        Main["ESP32C6.ino<br/>- setup()<br/>- loop()<br/>- system orchestration"]
+    end
+    
+    subgraph SERVICE["SERVICE LAYER"]
+        CP["CommandProcessor<br/>- commands<br/>- logging<br/>- blinking"]
+        GW["ESP32Gateway<br/>- WiFi<br/>- UDP<br/>- portal"]
+        DU["DisplayUtil<br/>- TFT screen<br/>- clock display<br/>- text output"]
+    end
+    
+    subgraph UTIL["UTILITY LAYER"]
+        LED["RGBLed<br/>- LED effects"]
+        NTP["NTPUtil<br/>- time sync"]
+        SD["SDUtil<br/>- SD file ops"]
+    end
+    
+    subgraph HAL["HARDWARE ABSTRACTION/DRIVERS"]
+        HW["Arduino Core / WiFi / SPI / SD / Adafruit NeoPixel"]
+    end
+    
+    subgraph HARDWARE["HARDWARE LAYER"]
+        DEV["ESP32-C6 | ST7789 TFT | RGB LED | microSD | WiFi network"]
+    end
+    
+    APP --> SERVICE
+    SERVICE --> UTIL
+    UTIL --> HAL
+    HAL --> HARDWARE
 ```
 
 ---
@@ -140,16 +131,25 @@ This module handles:
 
 Flow:
 
-```text
-START
-  │
-  ├─ load saved SSID/password
-  │   ├─ found -> connect WiFi
-  │   └─ not found -> start config portal
-  │
-  ├─ if connected -> LED green
-  ├─ if portal -> LED yellow
-  └─ wait for UDP command
+```mermaid
+flowchart TD
+    START["START"]
+    LOAD["Load saved SSID/password"]
+    FOUND{"Config<br/>found?"}
+    CONNECT["Connect WiFi"]
+    PORTAL["Start config portal"]
+    LED_G["LED green"]
+    LED_Y["LED yellow"]
+    WAIT["Wait for UDP command"]
+    
+    START --> LOAD
+    LOAD --> FOUND
+    FOUND -->|Yes| CONNECT
+    FOUND -->|No| PORTAL
+    CONNECT --> LED_G
+    PORTAL --> LED_Y
+    LED_G --> WAIT
+    LED_Y --> WAIT
 ```
 
 ### 3. CommandProcessor - Command Execution Engine
@@ -203,48 +203,42 @@ Provides microSD card management such as:
 
 ### Proposed System Wiring
 
-```text
-                                 ┌──────────────────────┐
-                                 │     ESP32-C6         │
-                                 │                      │
-                                 │  WiFi + GPIO + SPI   │
-                                 └───────┬──────────────┘
-                                         │
-        ┌──────────────────────────────┼──────────────────────────────┐
-        │                              │                              │
-        ▼                              ▼                              ▼
-  ┌──────────────┐             ┌──────────────────┐          ┌──────────────┐
-  │   ST7789 TFT │             │    microSD       │          │ WS2812B RGB  │
-  │   Display    │             │    Card Slot     │          │ LED          │
-  └──────┬───────┘             └────────┬─────────┘          └──────┬───────┘
-         │                               │                               │
-         ├─ SPI MOSI / MISO / SCLK / CS │                               │
-         │                               │                               │
-         │                               ├─ CS  = GPIO 4             │
-         │                               ├─ MOSI = GPIO 6            │
-         │                               ├─ MISO = GPIO 5           │
-         │                               └─ SCLK = GPIO 7           │
-         │
-         └─ Display data / control lines (hardware-specific)
-
-  RGB LED Data = GPIO 8
+```mermaid
+graph TD
+    ESP32["🔧 ESP32-C6<br/>WiFi + GPIO + SPI"]
+    
+    TFT["📺 ST7789 TFT Display"]
+    SD["💾 microSD Card Slot"]
+    LED["💡 WS2812B RGB LED"]
+    
+    ESP32 -->|SPI| TFT
+    ESP32 -->|SPI| SD
+    ESP32 -->|GPIO 8| LED
+    
+    SD_CS["CS = GPIO 4"]
+    SD_MOSI["MOSI = GPIO 6"]
+    SD_MISO["MISO = GPIO 5"]
+    SD_SCLK["SCLK = GPIO 7"]
+    
+    SD --> SD_CS
+    SD --> SD_MOSI
+    SD --> SD_MISO
+    SD --> SD_SCLK
+    
+    LED_GPIO["GPIO 8"]
+    LED --> LED_GPIO
 ```
 
 ### Pin Mapping Summary
 
-```text
-SD Card:
-  CS   -> GPIO 4
-  MISO -> GPIO 5
-  MOSI -> GPIO 6
-  SCLK -> GPIO 7
-
-RGB LED:
-  DATA -> GPIO 8
-
-Display (SPI):
-  CS/DC/RST/SCLK/MOSI follow board-specific wiring
-```
+| Component | Pin | GPIO |
+|-----------|-----|------|
+| **SD Card** | CS | GPIO 4 |
+| | MISO | GPIO 5 |
+| | MOSI | GPIO 6 |
+| | SCLK | GPIO 7 |
+| **RGB LED** | DATA | GPIO 8 |
+| **Display** | SPI | Board-specific |
 
 ---
 
@@ -252,106 +246,79 @@ Display (SPI):
 
 ### Runtime Data Flow
 
-```text
-┌───────────────┐      UDP Packet      ┌──────────────────┐
-│ External Host │ ──────────────────► │ ESP32Gateway     │
-│ (Controller)   │                     │ - receiveCommand │
-└───────────────┘                     └────────┬─────────┘
-                                               │
-                                               ▼
-                                    ┌──────────────────┐
-                                    │ CommandProcessor │
-                                    │ - parse command  │
-                                    │ - validate args  │
-                                    │ - dispatch call  │
-                                    └───────┬──────────┘
-                                            │
-             ┌────────────────────────────┼────────────────────────────┐
-             │                            │                            │
-             ▼                            ▼                            ▼
-    ┌──────────────┐            ┌──────────────┐            ┌──────────────┐
-    │ DisplayUtil  │            │ SDUtil       │            │ RGBLed       │
-    │ update UI    │            │ append log   │            │ status LED   │
-    └──────────────┘            └──────────────┘            └──────────────┘
-             │                            │                            │
-             └────────────────────────────┼────────────────────────────┘
-                                          ▼
-                                 ┌──────────────────┐
-                                 │ UDP Response     │
-                                 │ to sender        │
-                                 └──────────────────┘
+```mermaid
+sequenceDiagram
+    participant Host as External Host<br/>Controller
+    participant GW as ESP32Gateway
+    participant CMD as CommandProcessor
+    participant Display as DisplayUtil
+    participant SD as SDUtil
+    participant LED as RGBLed
+    participant Response as UDP Response
+    
+    Host->>GW: UDP Packet (Command)
+    GW->>CMD: receiveCommand()
+    CMD->>CMD: parse command<br/>validate args<br/>dispatch call
+    
+    par Parallel Execution
+        CMD->>Display: update UI
+        CMD->>SD: append log
+        CMD->>LED: status LED
+    end
+    
+    CMD->>Response: Send Response
+    Response-->>Host: UDP Response
 ```
 
 ### Initialization Data Flow
 
-```text
-START
-  │
-  ▼
-setup()
-  │
-  ├─ Serial.begin()
-  ├─ display.begin()
-  ├─ rgbLed.begin()
-  ├─ gateway.begin()
-  ├─ commandProcessor.begin()
-  │
-  └─ if WiFi connected -> ntp.initNTP()
+```mermaid
+flowchart TD
+    START["START"]
+    SERIAL["Serial.begin()"]
+    DISPLAY["display.begin()"]
+    LED["rgbLed.begin()"]
+    GATEWAY["gateway.begin()"]
+    CMD["commandProcessor.begin()"]
+    WIFI_CHECK{"WiFi<br/>connected?"}
+    NTP["ntp.initNTP()"]
+    READY["System Ready"]
+    
+    START --> SERIAL
+    SERIAL --> DISPLAY
+    DISPLAY --> LED
+    LED --> GATEWAY
+    GATEWAY --> CMD
+    CMD --> WIFI_CHECK
+    WIFI_CHECK -->|Yes| NTP
+    WIFI_CHECK -->|No| READY
+    NTP --> READY
 ```
 
 ---
 
 ## System State Machine
 
-```text
-             ┌──────────────┐
-             │   BOOT       │
-             └──────┬───────┘
-                    │
-                    ▼
-          ┌──────────────────┐
-          │ Initialize HW   │
-          └────────┬─────────┘
-                   │
-                   ▼
-          ┌──────────────────┐
-          │ WiFi Connect?    │
-          └───────┬──────────┘
-                  │
-         ┌────────┴─────────┐
-         │                  │
-         ▼                  ▼
-  ┌──────────────┐  ┌──────────────────────┐
-  │ STA MODE     │  │ AP CONFIG MODE       │
-  │ - connect    │  │ - portal on         │
-  │ - NTP sync  │  │ - save credentials  │
-  └──────┬───────┘  └─────────┬────────────┘
-         │                    │
-         └────────────┬───────┘
-                      ▼
-              ┌──────────────┐
-              │ READY        │
-              │ - wait UDP   │
-              │ - display    │
-              │ - monitor    │
-              └──────┬───────┘
-                     │
-                     ▼
-             ┌──────────────────┐
-             │ COMMAND RX      │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ EXECUTE ACTION   │
-             │ + log            │
-             │ + respond        │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ RETURN TO READY  │
-             └──────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> BOOT
+    
+    BOOT --> INIT: Initialize HW
+    INIT --> WIFI_CHECK: WiFi Connect?
+    
+    WIFI_CHECK --> STA: Connected
+    WIFI_CHECK --> AP: Not Found
+    
+    STA --> READY: NTP Sync
+    AP --> CONFIG: Portal Active
+    CONFIG --> READY: Credentials Saved
+    
+    READY --> CMD_RX: UDP Received
+    CMD_RX --> EXECUTE: Parse Command
+    EXECUTE --> READY: Log & Respond
+    
+    READY --> MONITOR: Monitor Mode
+    MONITOR --> READY: Display Status
 ```
 
 ---
@@ -427,13 +394,11 @@ Examples:
 
 ### Required Libraries
 
-```text
-Adafruit NeoPixel
-Arduino_GFX_Library
-SD
-WiFi
-SPI
-```
+- Adafruit NeoPixel
+- Arduino_GFX_Library
+- SD
+- WiFi
+- SPI
 
 ---
 
@@ -441,17 +406,25 @@ SPI
 
 ### WiFi Setup Flow
 
-```text
-Power On
-   │
-   ├─ If saved WiFi config exists:
-   │      connect automatically
-   │
-   └─ If not found:
-          start AP mode "ESP32_C6_CONFIG"
-          open 192.168.4.1 in browser
-          save SSID/password
-          reboot device
+```mermaid
+flowchart TD
+    BOOT["Power On"]
+    CHECK{"Saved WiFi<br/>config exists?"}
+    AUTO["Connect automatically"]
+    AP["Start AP mode<br/>ESP32_C6_CONFIG"]
+    BROWSER["Open 192.168.4.1<br/>in browser"]
+    SAVE["Save SSID/password"]
+    REBOOT["Reboot device"]
+    READY["Device Ready"]
+    
+    BOOT --> CHECK
+    CHECK -->|Yes| AUTO
+    CHECK -->|No| AP
+    AUTO --> READY
+    AP --> BROWSER
+    BROWSER --> SAVE
+    SAVE --> REBOOT
+    REBOOT --> READY
 ```
 
 ### Portal HTML Form
@@ -473,7 +446,7 @@ The built-in portal is minimal and functional:
 
 ### File Structure
 
-```text
+```
 esp32C6/
 ├── ESP32C6.ino
 ├── CommandProcessor.h
@@ -494,21 +467,30 @@ esp32C6/
 
 ### Class Relationship
 
-```text
-ESP32C6.ino
-  ├── DisplayUtil display
-  ├── RGBLed rgbLed
-  ├── ESP32Gateway gateway
-  ├── NTPUtil ntp
-  ├── SDUtil sd
-  └── CommandProcessor commandProcessor
-
-CommandProcessor uses:
-  - DisplayUtil
-  - ESP32Gateway
-  - NTPUtil
-  - RGBLed
-  - SDUtil
+```mermaid
+graph TD
+    Main["ESP32C6.ino"]
+    
+    Main --> Display["DisplayUtil"]
+    Main --> LED["RGBLed"]
+    Main --> Gateway["ESP32Gateway"]
+    Main --> NTP["NTPUtil"]
+    Main --> SD["SDUtil"]
+    Main --> CMD["CommandProcessor"]
+    
+    CMD --> Display
+    CMD --> Gateway
+    CMD --> NTP
+    CMD --> LED
+    CMD --> SD
+    
+    style Main fill:#ff9999
+    style Display fill:#99ccff
+    style LED fill:#99ff99
+    style Gateway fill:#ffcc99
+    style NTP fill:#ff99cc
+    style SD fill:#ccff99
+    style CMD fill:#ffff99
 ```
 
 ---
