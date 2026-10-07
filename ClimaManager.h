@@ -10,9 +10,11 @@ public:
     inline static float temperatura = 0.0;
     inline static int codigoCondicao = 0;
     inline static uint32_t ultimaAtualizacao = 0;
+    inline static bool sincronizado = false;
 
     static void atualizar() {
-        if (millis() - ultimaAtualizacao < 900000 && ultimaAtualizacao != 0) return;
+        uint32_t intervalo = sincronizado ? 900000UL : 60000UL;
+        if (millis() - ultimaAtualizacao < intervalo && ultimaAtualizacao != 0) return;
         if (WiFi.status() != WL_CONNECTED) return;
 
         ultimaAtualizacao = millis();
@@ -26,7 +28,7 @@ public:
         http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
         
         // URL da API configurada com os parâmetros corretos para Porto Alegre - RS
-        String url = "https://open-meteo.com";
+        String url = "https://api.open-meteo.com/v1/forecast?latitude=-30.03&longitude=-51.23&current=temperature_2m,weather_code&timezone=America%2FSao_Paulo";
         
         http.begin(client, url);
         int httpCode = http.GET();
@@ -66,6 +68,7 @@ public:
                         codigoCondicao = currentPayload.substring(startPos, endPos).toInt();
                     }
                 }
+                sincronizado = true;
                 Serial.printf("[CLIMA] Sincronizado -> Temp: %.1f C | Cod WMO: %d\n", temperatura, codigoCondicao);
             }
         } 

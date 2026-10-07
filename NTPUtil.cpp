@@ -1,6 +1,18 @@
 #include <Preferences.h>
 #include "NTPUtil.h"
 #include <time.h>
+#include <sys/time.h>
+
+namespace {
+bool anoBissexto(int ano) {
+    return (ano % 4 == 0 && ano % 100 != 0) || ano % 400 == 0;
+}
+
+int diasNoMes(int ano, int mes) {
+    static const int dias[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    return mes == 2 && anoBissexto(ano) ? 29 : dias[mes - 1];
+}
+}
 
 void NTPUtil::carregarConfiguracoes() {
     Preferences prefs;
@@ -69,6 +81,45 @@ String NTPUtil::getDateTime(uint32_t timeoutMs) {
 bool NTPUtil::isSincronizado() {
     struct tm timeinfo;
     return getLocalTime(&timeinfo, 50); // Timeout rápido e seguro para diagnóstico
+}
+
+bool NTPUtil::ajustarDataHora(int ano, int mes, int dia, int hora, int minuto, int segundo) {
+    if (ano < 1970 || ano > 2099 || mes < 1 || mes > 12 ||
+        dia < 1 || dia > diasNoMes(ano, mes) ||
+        hora < 0 || hora > 23 || minuto < 0 || minuto > 59 ||
+        segundo < 0 || segundo > 59) {
+        return false;
+    }
+
+    aplicarConfiguracaoNTP();
+
+    int64_t diasDesdeEpoch = 0;
+    for (int anoAtual = 1970; anoAtual < ano; anoAtual++) {
+        diasDesdeEpoch += anoBissexto(anoAtual) ? 366 : 365;
+    }
+    for (int mesAtual = 1; mesAtual < mes; mesAtual++) {
+        diasDesdeEpoch += diasNoMes(ano, mesAtual);
+    }
+    diasDesdeEpoch += dia - 1;
+
+    int64_t epochUtc = diasDesdeEpoch * 86400LL +
+                       hora * 3600LL + minuto * 60LL + segundo;
+    epochUtc -= static_cast<int64_t>(fusoHora) * 3600LL;
+    if (dstAtivo) {
+        epochUtc -= 3600LL;
+    }
+
+    struct timeval timeValue = {};
+    timeValue.tv_sec = static_cast<time_t>(epochUtc);
+    return settimeofday(&timeValue, nullptr) == 0;
+}
+
+int32_t NTPUtil::getFusoHora() const {
+    return fusoHora;
+}
+
+bool NTPUtil::isDstAtivo() const {
+    return dstAtivo;
 }
 
 String NTPUtil::getSomenteHora() {

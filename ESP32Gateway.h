@@ -16,11 +16,23 @@ public:
     bool receiveCommand(String& comando);
     void sendMessage(String message);
     void clearConfig();
+    String savedSsid(uint8_t slot) const;
+    uint8_t nextSlot() const { return nextWifiSlot_; }
     
 
 private:
+    struct WifiCredential
+    {
+        String ssid;
+        String password;
+    };
+
     bool connectWifi();
+    void loadWifiCredentials();
+    String buildConfigPage() const;
     void initPortal();
+    void setupInfoRoutes();
+    void setupWifiConfigRoutes();
     void saveWifi();
     void cleanConfig();
 
@@ -28,36 +40,8 @@ private:
     const int udpPort = 4210;
     WebServer server;
     Preferences prefs;
-
-    // HTML da página de configuração
-    const char* htmlPage PROGMEM = R"rawliteral(
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configuração WiFi</title>
-    <style>
-    body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; text-align: center; }
-    .container { background: white; max-width: 300px; margin: auto; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
-    input[type="submit"] { background: #007bff; color: white; border: none; cursor: pointer; }
-    </style>
-    </head>
-    <body>
-    <div class="container">
-    <h2>Configuração WiFi - ESP32-C6</h2>
-    <form action="/salvar" method="POST">
-        <label>SSID:</label>
-        <input type="text" name="ssid" placeholder="Nome da rede" required>
-        <label>Senha:</label>
-        <input type="password" name="senha" placeholder="Senha da rede">
-        <input type="submit" value="Salvar">
-    </form>
-    </div>
-    </body>
-    </html>
-    )rawliteral";
+    WifiCredential savedNetworks_[5];
+    uint8_t nextWifiSlot_ = 0;
 };
 
 #endif // ESP32_GATEWAY_H

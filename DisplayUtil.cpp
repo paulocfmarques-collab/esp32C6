@@ -20,6 +20,7 @@ DisplayUtil::DisplayUtil() {
     ponteiroHistorico = 0;
     sdGravandoAnimacao = false;
     fimAnimacaoSD = 0;
+    statusPageInitialized = false;
     for (int i = 0; i < 50; i++) historicoRSSI[i] = -100;
 }
 
@@ -38,6 +39,7 @@ void DisplayUtil::clear() {
     lines.clear();
     ultimaHora = "";
     ultimaData = "";
+    statusPageInitialized = false;
     gfx->fillScreen(backgroundColor);
 }
 
@@ -176,10 +178,14 @@ void DisplayUtil::showClock(String dateTime) {
     gfx->setTextColor(COLOR_CYAN);
     gfx->setTextSize(1);
     gfx->setCursor(climaX, gfx->height() - 38);
-    gfx->print(ClimaManager::obterTextoCondicao());
+    gfx->print(ClimaManager::sincronizado ? ClimaManager::obterTextoCondicao() : String("Clima..."));
     
     gfx->setCursor(climaX, gfx->height() - 26);
-    gfx->printf("%.1f C", ClimaManager::temperatura);
+    if (ClimaManager::sincronizado) {
+        gfx->printf("%.1f C", ClimaManager::temperatura);
+    } else {
+        gfx->print("-- C");
+    }
 
     // --- DIMINUIÇÃO DA BARRA DE OSCILAÇÃO (LARGURA MENOR CORRIGIDA) ---
     int graphX = gfx->width() - 92; 
@@ -215,6 +221,255 @@ void DisplayUtil::showClock(String dateTime) {
     
     gfx->fillRect(24, 108, larguraMaximaBarra, 4, 0x10A2); 
     gfx->fillRect(24, 108, barWidth, 4, COLOR_CYAN);      
+}
+
+void DisplayUtil::showStatusPage(bool sdReady, bool ntpSynchronized, const String& ntpDateTime,
+                                 int32_t timezoneOffset, bool daylightSaving, uint8_t part) {
+    gfx->setRotation(1);
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, COLOR_GRAY);
+        gfx->fillRect(12, 12, gfx->width() - 24, 26, 0x10A2);
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 18);
+        gfx->print(part == 0 ? "NTP 1/2" : "NTP 2/2");
+        statusPageInitialized = true;
+    }
+
+    String lines[5];
+    uint16_t colors[5];
+    bool wifiConectado = WiFi.status() == WL_CONNECTED;
+
+    if (part == 0) {
+        lines[0] = ntpSynchronized ? "SINCRONIZADO" : "AGUARDANDO";
+        colors[0] = ntpSynchronized ? COLOR_GREEN : 0xF800;
+        lines[1] = ntpSynchronized ? ntpDateTime.substring(0, 10) : String("--");
+        lines[2] = ntpSynchronized ? ntpDateTime.substring(11, 19) : String("--");
+        lines[3] = String("Fuso: UTC") + (timezoneOffset >= 0 ? "+" : "") + String(timezoneOffset);
+        lines[4] = String("DST: ") + (daylightSaving ? "ON" : "OFF");
+        colors[1] = colors[2] = colors[3] = colors[4] = COLOR_WHITE;
+    } else {
+        unsigned long up = millis() / 1000UL;
+        char upBuf[32];
+        snprintf(upBuf, sizeof(upBuf), "UP: %lud %02lu:%02lu", up / 86400UL, (up / 3600UL) % 24UL, (up / 60UL) % 60UL);
+        lines[0] = wifiConectado ? "Wi-Fi: conectado" : "Wi-Fi: desconectado";
+        colors[0] = wifiConectado ? COLOR_GREEN : 0xF800;
+        lines[1] = String("IP: ") + (wifiConectado ? WiFi.localIP().toString() : String("--"));
+        lines[2] = String("RSSI: ") + (wifiConectado ? String(WiFi.RSSI()) + " dBm" : String("--"));
+        lines[3] = upBuf;
+        lines[4] = sdReady ? "SD: PRONTO" : "SD: INDISPONIVEL";
+        colors[1] = colors[2] = colors[3] = COLOR_WHITE;
+        colors[4] = sdReady ? COLOR_GREEN : 0xF800;
+    }
+
+    gfx->setTextSize(2);
+    for (uint8_t i = 0; i < 5; i++) {
+        int y = 44 + (i * 24);
+        gfx->fillRect(16, y, gfx->width() - 32, 20, backgroundColor);
+        gfx->setTextColor(colors[i]);
+        gfx->setCursor(20, y + 2);
+        String l = lines[i];
+        if (l.length() > 24) l = l.substring(0, 24);
+        gfx->print(l);
+    }
+}
+
+void DisplayUtil::showNetworkPage(uint8_t part) {
+    gfx->setRotation(1);
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, COLOR_GRAY);
+        gfx->fillRect(12, 12, gfx->width() - 24, 26, 0x10A2);
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 18);
+        gfx->print(part == 0 ? "REDE WI-FI 1/2" : "REDE WI-FI 2/2");
+        statusPageInitialized = true;
+    }
+
+    bool connected = WiFi.status() == WL_CONNECTED;
+    String lines[5];
+    if (part == 0) {
+        lines[0] = String("Estado: ") + (connected ? "ON" : "OFF");
+        lines[1] = String("SSID: ") + (connected ? WiFi.SSID() : "--");
+        lines[2] = String("IP: ") + (connected ? WiFi.localIP().toString() : "--");
+        lines[3] = String("GW: ") + (connected ? WiFi.gatewayIP().toString() : "--");
+        lines[4] = String("Mask: ") + (connected ? WiFi.subnetMask().toString() : "--");
+    } else {
+        lines[0] = String("DNS1: ") + (connected ? WiFi.dnsIP(0).toString() : "--");
+        lines[1] = String("DNS2: ") + (connected ? WiFi.dnsIP(1).toString() : "--");
+        lines[2] = String("MAC: ") + WiFi.macAddress();
+        lines[3] = String("Canal: ") + (connected ? String(WiFi.channel()) : "--");
+        lines[4] = String("RSSI: ") + (connected ? String(WiFi.RSSI()) + " dBm" : "--");
+    }
+
+    gfx->setTextSize(2);
+    for (uint8_t i = 0; i < 5; i++) {
+        int y = 44 + (i * 22);
+        gfx->fillRect(16, y, gfx->width() - 32, 18, backgroundColor);
+        gfx->setTextColor(part == 0 && i == 0 ? (connected ? COLOR_GREEN : 0xF800) : COLOR_WHITE);
+        gfx->setCursor(20, y + 1);
+        if (lines[i].length() > 24) {
+            lines[i] = lines[i].substring(0, 24);
+        }
+        gfx->print(lines[i]);
+    }
+}
+
+void DisplayUtil::showSystemPage() {
+    gfx->setRotation(1);
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, COLOR_GRAY);
+        gfx->fillRect(12, 12, gfx->width() - 24, 26, 0x10A2);
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 18);
+        gfx->print("SISTEMA");
+        statusPageInitialized = true;
+    }
+
+    uint32_t heapTotal = ESP.getHeapSize();
+    uint32_t heapFree = ESP.getFreeHeap();
+    uint8_t heapPercent = heapTotal > 0 ? (heapFree * 100ULL) / heapTotal : 0;
+    float temp = temperatureRead();
+    String lines[5] = {
+        String("CPU: ") + String(ESP.getCpuFreqMHz()) + " MHz",
+        String("Temp: ") + String(temp, 1) + " C",
+        String("RAM: ") + String(heapFree / 1024) + " KB (" + String(heapPercent) + "%)",
+        String("RAM min: ") + String(ESP.getMinFreeHeap() / 1024) + " KB",
+        String("Flash: ") + String(ESP.getSketchSize() * 100ULL / ESP.getFlashChipSize()) + "% usada"
+    };
+
+    gfx->setTextSize(2);
+    for (uint8_t i = 0; i < 5; i++) {
+        int y = 44 + (i * 22);
+        gfx->fillRect(16, y, gfx->width() - 32, 18, backgroundColor);
+        gfx->setTextColor(i == 1 && temp > 70.0f ? 0xF800 : COLOR_WHITE);
+        gfx->setCursor(20, y + 1);
+        gfx->print(lines[i]);
+    }
+}
+void DisplayUtil::showSavedWifiPage(const String ssids[5], int connectedSlot, uint8_t nextSlot) {
+    gfx->setRotation(1);
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, COLOR_GRAY);
+        gfx->fillRect(12, 12, gfx->width() - 24, 26, 0x10A2);
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 18);
+        gfx->print("REDES SALVAS");
+        statusPageInitialized = true;
+    }
+
+    gfx->setTextSize(2);
+    for (uint8_t i = 0; i < 5; i++) {
+        int y = 44 + (i * 21);
+        gfx->fillRect(16, y, gfx->width() - 32, 19, backgroundColor);
+        bool vazio = ssids[i].length() == 0;
+        bool conectada = static_cast<int>(i) == connectedSlot;
+        gfx->setTextColor(conectada ? COLOR_GREEN : vazio ? COLOR_GRAY : COLOR_WHITE);
+        gfx->setCursor(20, y + 2);
+        String linha = String(i + 1) + (conectada ? "*" : (i == nextSlot ? ">" : " ")) +
+                       (vazio ? String("(vazio)") : ssids[i]);
+        if (linha.length() > 24) linha = linha.substring(0, 24);
+        gfx->print(linha);
+    }
+    gfx->setTextSize(1);
+    gfx->setTextColor(COLOR_GRAY);
+    gfx->fillRect(16, 152, gfx->width() - 32, 10, backgroundColor);
+    gfx->setCursor(20, 153);
+    gfx->print("* conectada   > proxima a substituir");
+}
+
+void DisplayUtil::showHoldMessage(const String& line1, const String& line2, uint16_t color) {
+    gfx->setRotation(1);
+    gfx->fillScreen(backgroundColor);
+    gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, color);
+    gfx->setTextColor(color);
+    gfx->setTextSize(3);
+    gfx->setCursor((gfx->width() - line1.length() * 18) / 2, 60);
+    gfx->print(line1);
+    gfx->setTextSize(2);
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setCursor((gfx->width() - line2.length() * 12) / 2, 110);
+    gfx->print(line2);
+    statusPageInitialized = false;
+}
+
+void DisplayUtil::showSdLoading(uint8_t frame) {
+    gfx->setRotation(1);
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, COLOR_GRAY);
+        gfx->fillRect(12, 12, gfx->width() - 24, 26, 0x10A2);
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 18);
+        gfx->print("CARTAO SD");
+        gfx->setTextColor(COLOR_WHITE);
+        gfx->setCursor(60, 140);
+        gfx->print("Lendo cartao...");
+        statusPageInitialized = true;
+    }
+
+    const int cx = gfx->width() / 2;
+    const int cy = 88;
+    const int raio = 28;
+    const uint8_t pontos = 8;
+    for (uint8_t i = 0; i < pontos; i++) {
+        float ang = (i * 2.0f * PI) / pontos;
+        int x = cx + static_cast<int>(cosf(ang) * raio);
+        int y = cy + static_cast<int>(sinf(ang) * raio);
+        uint8_t dist = (frame + pontos - i) % pontos;
+        uint16_t cor = dist == 0 ? COLOR_CYAN : dist == 1 ? 0x0410 : dist < 4 ? 0x2945 : 0x10A2;
+        gfx->fillCircle(x, y, dist == 0 ? 6 : 4, cor);
+    }
+}
+void DisplayUtil::showSdPage(bool sdReady, const String& cardType,
+                             uint64_t totalBytes, uint64_t usedBytes) {
+    gfx->setRotation(1);
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, COLOR_GRAY);
+        gfx->fillRect(12, 12, gfx->width() - 24, 26, 0x10A2);
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 18);
+        gfx->print("CARTAO SD");
+        statusPageInitialized = true;
+    }
+
+    const uint64_t bytesPerMiB = 1024ULL * 1024ULL;
+    uint64_t usedMiB = usedBytes / bytesPerMiB;
+    uint64_t totalMiB = totalBytes / bytesPerMiB;
+    uint64_t freeMiB = totalBytes > usedBytes ? (totalBytes - usedBytes) / bytesPerMiB : 0;
+    uint8_t usagePercent = totalBytes > 0
+        ? static_cast<uint8_t>((usedBytes * 100ULL) / totalBytes)
+        : 0;
+
+    String lines[5] = {
+        String("Estado: ") + (sdReady ? "DISPONIVEL" : "INDISPONIVEL"),
+        String("Tipo: ") + (sdReady ? cardType : "--"),
+        String("Total: ") + String(static_cast<unsigned long>(totalMiB)) + " MiB",
+        String("Usado: ") + String(static_cast<unsigned long>(usedMiB)) + " MiB (" +
+            String(usagePercent) + "%)",
+        String("Livre: ") + String(static_cast<unsigned long>(freeMiB)) + " MiB"
+    };
+
+    gfx->setTextSize(2);
+    for (uint8_t i = 0; i < 5; i++) {
+        int y = 44 + (i * 24);
+        gfx->fillRect(16, y, gfx->width() - 32, 20, backgroundColor);
+        gfx->setTextColor(i == 0 && sdReady ? COLOR_GREEN :
+                          i == 0 ? 0xF800 : COLOR_WHITE);
+        gfx->setCursor(20, y + 2);
+        String l = lines[i];
+        if (l.length() > 24) l = l.substring(0, 24);
+        gfx->print(l);
+    }
 }
 
 void DisplayUtil::desenharMatrixScreensaver() {

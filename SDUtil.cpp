@@ -227,3 +227,62 @@ String SDUtil::readJson(String path)
     digitalWrite(SD_CS, HIGH);
     return content;
 }
+
+uint64_t SDUtil::getUsedBytes()
+{
+    if (!sdCard.card())
+        return 0;
+
+    uint32_t clusterCount = sdCard.vol()->clusterCount();
+    uint32_t freeClusters = sdCard.vol()->freeClusterCount();
+
+    uint32_t sectorsPerCluster =
+        sdCard.vol()->sectorsPerCluster();
+
+    uint64_t usedClusters =
+        (uint64_t)clusterCount - freeClusters;
+
+    return usedClusters *
+           sectorsPerCluster *
+           512ULL;
+}
+
+String SDUtil::readTail(String path, size_t maxBytes)
+{
+    FsFile file = sdCard.open(path.c_str(), O_READ);
+    if (!file) return "";
+
+    uint64_t size = file.fileSize();
+    if (size > maxBytes) file.seekSet(size - maxBytes);
+
+    String content;
+    content.reserve(maxBytes);
+    while (file.available())
+    {
+        content += (char)file.read();
+    }
+    file.close();
+    return content;
+}
+
+bool SDUtil::removeDir(String path)
+{
+    return sdCard.rmdir(path.c_str());
+}
+
+uint64_t SDUtil::getFileSize(String path)
+{
+    if (!sdCard.card())
+        return 0;
+
+    FsFile file = sdCard.open(path.c_str(), O_READ);
+
+    if (!file)
+        return 0;
+
+    uint64_t tamanho = file.fileSize();
+
+    file.close();
+
+    return tamanho;
+}

@@ -20,62 +20,25 @@ CommandProcessor::CommandProcessor(DisplayUtil& display, ESP32Gateway& gateway,
 bool CommandProcessor::begin()
 {
   sdReady_ = sd_.begin();
-  String status = sdReady_ ? "Cartao SD pronto" : "Cartao SD indisponivel";
-  Serial.println(status);
-  display_.println(status);
+  Serial.println(sdReady_ ? "SD pronto" : "SD indisponivel");
   return sdReady_;
+}
+
+void CommandProcessor::saveLog(String message)
+{
+  if (sdReady_)
+  {
+    sd_.appendText("/log.txt", message);
+  }
 }
 
 void CommandProcessor::answerAll(String message, bool log)
 {
   Serial.print(message);
-
-  String displayMessage = message;
-  displayMessage.replace("\r", "");
-  displayMessage.replace("\n", "");
-  if (displayMessage.length() > 0)
-  {
-    display_.println(displayMessage);
-  }
-
   gateway_.sendMessage(message);
-
   if (log)
   {
     saveLog(message);
-  }
-}
-
-void CommandProcessor::saveLog(String message)
-{
-  if (!sdReady_)
-  {
-    Serial.println("[LOG ERRO] Cartao SD nao esta ativo.");
-    return;
-  }
-
-  String timestamp;
-  ntp_.getDateTime(timestamp);
-  if (timestamp == "Erro ao obter data e hora")
-  {
-    timestamp = "Sem Hora Sinc.";
-  }
-
-  String entry = "[" + timestamp + "] " + message;
-  if (!entry.endsWith("\n"))
-  {
-    entry += "\n";
-  }
-
-  // 1. Grava no cartão isoladamente com exclusividade física
-  if (!sd_.appendText("/log.txt", entry))
-  {
-    Serial.println("[LOG ERRO] Falha ao gravar /log.txt no cartao SD.");
-  }
-  else 
-  {
-    // 2. Só dispara o visual gráfico DEPOIS que o arquivo fechou com sucesso!
-    display_.dispararAnimacaoGravacaoSD();
   }
 }
 
@@ -102,47 +65,73 @@ void CommandProcessor::executeCommand(String command)
   String message = "";
   Serial.print(commandLog);
   display_.println("> " + command);
-  saveLog(commandLog);
+
   
   if (command == "help")
   {
-    message = "===== COMANDOS DISPONIVEIS =====\n"
-              "[ SISTEMA ]\n"
-              "  help        - Mostra este menu de ajuda\n"
-              "  info        - Diagnostico completo do dispositivo\n"
-              "  status      - Resumo simplificado de conexoes\n"
-              "  uptime      - Tempo de atividade da CPU\n"
-              "  reason      - Exibe o motivo do ultimo reset\n"
-              "  version     - Exibe a versao do firmware\n"
-              "  build       - Exibe a data/hora de compilacao\n"
-              "  alive       - Teste rápido de ping de rede\n"
-              "  reboot      - Reinicia o dispositivo remotamente\n"
-              "[ REDE / WI-FI ]\n"
-              "  net_info    - Detalhes de IP, Gateway, DNS e RSSI\n"
-              "  mac         - Endereco fisico MAC do chip\n"
-              "  reset_wifi  - Apaga credenciais e reinicia em modo AP\n"
-              "  net_scan    - Escaneia redes proximas e gera netscan.json\n"
-              "  time        - Exibe a hora atual do NTP\n"
-              "  date        - Exibe a data atual do NTP\n"
-              "  set_fuso:X  - Altera fuso horario (Ex: set_fuso:-3)\n"
-              "  dst_on/off  - Ativa/Desativa horario de verao\n"
-              "  clima_sync  - Forca sincronizacao com API de clima\n"
-              "[ CARTAO SD ]\n"
-              "  list        - Lista arquivos e diretorios no SD\n"
-              "  read:PATH   - Le conteudo de um arquivo (Ex: read:log.txt)\n"
-              "  del:PATH    - Remove um arquivo do cartao\n"
-              "  log_clear   - Limpa o arquivo de logs do sistema\n"
-              "  sd_type     - Exibe o padrao fisico do cartao\n"
-              "  sd_size     - Exibe a capacidade total do cartao\n"
-              "  sd_test     - Executa teste de leitura/escrita\n"
-              "[ CONTROLE LED ]\n"
-              "  led_on/off  - Liga/Desliga o LED em modo estatico\n"
-              "  led_cyan    - Altera cor do LED para ciano\n"
-              "  led_breath  - Ativa efeito de pulsacao em ciano\n"
-              "  led_pisca:P:I - Pisca P vezes no intervalo I (ms)\n"
-              "  led_blink:I   - Pisca continuamente no intervalo I (ms)\n"
-              "  led_color:R:G:B - Define cor RGB customizada (0-255)\n"
-              "================================\n";
+    message = "COMANDOS ESP32-C3\n"
+              "[SISTEMA]\n"
+              "help\n"
+              "info\n"
+              "status\n"
+              "uptime\n"
+              "reason\n"
+              "version\n"
+              "build\n"
+              "alive\n"
+              "reboot\n"
+              "temp\n"
+              "cpu\n"
+              "ram\n"
+              "flash\n"
+              "init\n"
+              "heap\n"
+              "heap_min\n"
+              "chip_info\n"
+              "flash_info\n"
+              "health\n"
+              "selftest\n"
+              "[REDE]\n"
+              "net_info\n"
+              "mac\n"
+              "reset_wifi\n"
+              "rssi\n"
+              "ip\n"
+              "ssid\n"
+              "channel\n"
+              "wifi_status\n"
+              "[HORARIO]\n"
+              "time\n"
+              "date\n"
+              "ntp_status\n"
+              "set_fuso:X\n"
+              "dst_on\n"
+              "dst_off\n"
+              "set_time:AAAA-MM-DD HH:MM:SS\n"
+              "[LED]\n"
+              "led_on\n"
+              "led_off\n"
+              "led_breath\n"
+              "led_pisca:P:I\n"
+              "led_blink:I\n"
+              "[SD]\n"
+              "sd_status\n"
+              "sd_list[:/pasta]\n"
+              "sd_read:/arq\n"
+              "sd_write:/arq:texto\n"
+              "sd_append:/arq:texto\n"
+              "sd_del:/arq\n"
+              "sd_mkdir:/pasta\n"
+              "sd_rmdir:/pasta\n"
+              "sd_log\n"
+              "sd_clear_log\n"
+              "sd_test\n"
+              "[CLIMA]\n"
+              "clima\n"
+              "clima_age\n"
+              "clima_sync\n"
+              "P = pulsos; I = intervalo em ms\n"
+              "X = fuso UTC (ex.: -3)\n";
     answerAll(message);
   }
   else if (command == "reboot")
@@ -162,32 +151,8 @@ void CommandProcessor::executeCommand(String command)
               " C\nCondicao: " + ClimaManager::obterTextoCondicao() + "\n";
     answerAll(message);
   }
-  else if (command == "log_clear")
-  {
-    if (!sdReady_) {
-      answerAll("Erro: SD indisponivel\n");
-    } else {
-      if (sd_.exists("/log.txt")) {
-        sd_.removeFile("/log.txt");
-        answerAll("Arquivo /log.txt deletado com sucesso.\n");
-      } else {
-        answerAll("Arquivo /log.txt nao existia no cartao.\n");
-      }
-    }
-  }
-  else if (command == "net_scan")
-  {
-    if (scanningWifi_) {
-      answerAll("Erro: Varredura ja esta em andamento.\n");
-    } else if (!sdReady_) {
-      answerAll("Erro: SD inativo. Nao eh possivel salvar o JSON.\n");
-    } else {
-      answerAll("Iniciando varredura Wi-Fi em background...\n");
-      scanningWifi_ = true;
-      // O parametro 'true' ativa o escaneamento assincrono (nao travante)
-      WiFi.scanNetworks(true); 
-    }
-  }
+  
+  
   else if (command == "info")
   {
     String dataHoraCompleta; ntp_.getDateTime(dataHoraCompleta, 100);
@@ -200,7 +165,7 @@ void CommandProcessor::executeCommand(String command)
     float flashLivre = (float)ESP.getFreeSketchSpace() / (1024.0 * 1024.0);
 
     message = "===== DEVICE INFO =====\n"
-              "Hostname: ESP32C6\n"
+              "Hostname: ESP32C3\n"
               "Firmware: " + obterVersaoAutomatica() + "\n"
               "Build: " + String(__DATE__) + " " + String(__TIME__) + "\n" +
               "SSID: " + WiFi.SSID() + "\n" +
@@ -209,7 +174,6 @@ void CommandProcessor::executeCommand(String command)
               "RSSI: " + String(WiFi.RSSI()) + " dBm\n" +
               "Heap Livre: " + String(heapLivre) + " KB\n" +
               "Flash Livre: " + String(flashLivre, 1) + " MB\n" +
-              "SD Card: " + (sdReady_ ? "Ativo" : "Inativo") + "\n" + 
               "Data: " + dataStr + "\n" +
               "Hora: " + horaStr + "\n" +
               "Uptime: " + String(millis()) + " ms\n" +
@@ -244,7 +208,6 @@ void CommandProcessor::executeCommand(String command)
         String statusWifi = (WiFi.status() == WL_CONNECTED) ? "OK" : "FALHA";
         uint32_t heapKB = ESP.getFreeHeap() / 1024;
         message = "ONLINE (MESTRE)\nWiFi: " + statusWifi + 
-                  "\nSD: " + (sdReady_ ? "OK" : "FALHA") + 
                   "\nNTP: " + (ntp_.isSincronizado() ? "OK" : "FALHA") + 
                   "\nHeap: " + String(heapKB) + " KB\n";
         answerAll(message);
@@ -339,14 +302,29 @@ void CommandProcessor::executeCommand(String command)
       
       Preferences prefs;
       prefs.begin("ntp_cfg", true);
-      bool currentDst = prefs.getBool("dst", false);
+      bool currentDst = prefs.getBool("dst");
       prefs.end();
 
       ntp_.atualizarConfiguracao(novoFuso, currentDst);
       answerAll("Novo fuso configurado: " + String(novoFuso) + "\n");
     }
   }
-  else if (command == "temp") {
+  else if (command.startsWith("set_time:"))
+  {
+    String v = command.substring(9);
+    v.trim();
+    int ano, mes, dia, hora, min, seg;
+    if (v.length() != 19 ||
+        sscanf(v.c_str(), "%d-%d-%d %d:%d:%d", &ano, &mes, &dia, &hora, &min, &seg) != 6 ||
+        !ntp_.ajustarDataHora(ano, mes, dia, hora, min, seg))
+    {
+      answerAll("Erro: use set_time:AAAA-MM-DD HH:MM:SS\n");
+    }
+    else
+    {
+      answerAll("Data/hora ajustada: " + v + "\n");
+    }
+  }  else if (command == "temp") {
     message = "CPU Temp: " + String(temperatureRead()) + " C";
     answerAll(message);
   }
@@ -383,7 +361,51 @@ void CommandProcessor::executeCommand(String command)
   }
   else if (command == "uptime")
   {
-    answerAll("Uptime: " + String(millis()) + " ms\n");
+    uint64_t totalSegundos = millis() / 1000ULL;
+
+    uint32_t dias = totalSegundos / 86400ULL;
+    totalSegundos %= 86400ULL;
+
+    uint8_t horas = totalSegundos / 3600ULL;
+    totalSegundos %= 3600ULL;
+
+    uint8_t minutos = totalSegundos / 60ULL;
+    uint8_t segundos = totalSegundos % 60ULL;
+
+    char buffer[100];
+
+    snprintf(buffer, sizeof(buffer),
+             "===== UPTIME =====\n"
+             "%lu dias\n"
+             "%02u:%02u:%02u\n"
+             "==================\n",
+             (unsigned long)dias,
+             horas,
+             minutos,
+             segundos);
+
+    answerAll(String(buffer));
+  }
+  else if (command == "ntp_status")
+  {
+      bool sincronizado = ntp_.isSincronizado();
+
+      message = "===== NTP STATUS =====\n"
+                "Estado: ";
+
+      message += sincronizado ? "SINCRONIZADO\n" : "SEM SINCRONISMO\n";
+
+      if (sincronizado)
+      {
+          String dataHora;
+          ntp_.getDateTime(dataHora, 100);
+
+          message += "Data/Hora: " + dataHora + "\n";
+      }
+
+      message += "======================\n";
+
+      answerAll(message);
   }
   else if (command == "mac")
   {
@@ -408,156 +430,257 @@ void CommandProcessor::executeCommand(String command)
       String data = (dataHoraCompleta.length() >= 10) ? dataHoraCompleta.substring(0, 10) : "Erro NTP";
       answerAll("Data:\n" + data + "\n");
   }
-  else if (command == "list")
-  {
-    if (!sdReady_)
-    {
-      answerAll("Erro: SD inacessivel\n");
-    }
-    else
-    {
-      answerAll("--- Arquivos SD ---\n" + sd_.listFiles("/") + "-------------------\n");
-    }
-  }
-  else if (command == "sd_type")
-  {
-    if (!sdReady_)
-    {
-      answerAll("Erro: SD inacessivel\n");
-    }
-    else
-    {
-      answerAll("Tipo do cartao SD: " + sd_.getCardType() + "\n");
-    }
-  }
-  else if (command == "sd_size")
-  {
-    if (!sdReady_)
-    {
-      answerAll("Erro: SD inacessivel\n");
-    }
-    else
-    {
-      uint64_t sizeBytes = sd_.getCardSizeBytes();
-      uint64_t sizeMiB = sizeBytes / (1024ULL * 1024ULL);
-      message = "";
-      char buffer[96];
-      snprintf(buffer, sizeof(buffer), "Tamanho do cartao SD: %llu bytes (%llu MiB)\n",
-               static_cast<unsigned long long>(sizeBytes),
-           static_cast<unsigned long long>(sizeMiB));
-      message = buffer; 
-      answerAll(message);
-    }
-  }
-  else if (command == "sd_test")
-  {
-    if (!sdReady_)
-    {
-      answerAll("Erro: SD inacessivel\n");
-    }
-    else
-    {
-      answerAll(sd_.test() ? "Teste do SD: OK\n" : "Teste do SD: FALHOU\n");
-    }
-  }
-  else if (command.startsWith("read:"))
-  {
-    if (!sdReady_)
-    {
-      answerAll("Erro: SD inacessivel\n");
-      return;
-    }
-
-    String path = command.substring(5);
-    path.trim();
-    if (!path.startsWith("/"))
-    {
-      path = "/" + path;
-    }
-    if (!sd_.exists(path))
-    {
-      answerAll("Arquivo nao existe: " + path + "\n");
-      return;
-    }
-
-    String contents = sd_.readText(path);
-    answerAll("--- Lendo: " + path + " ---\n", false);
-    for (size_t offset = 0; offset < contents.length(); offset += 512)
-    {
-      answerAll(contents.substring(offset, offset + 512), false);
-    }
-    answerAll("\n--- Fim do arquivo ---\n");
-  }
-  else if (command.startsWith("del:"))
-  {
-    if (!sdReady_)
-    {
-      answerAll("Erro: SD inacessivel\n");
-      return;
-    }
-
-    String path = command.substring(4);
-    path.trim();
-    if (!path.startsWith("/"))
-    {
-      path = "/" + path;
-    }
-    answerAll(sd_.removeFile(path) ? "Arquivo deletado: " + path + "\n"
-                                      : "Erro ao deletar: " + path + "\n");
-  }
-  else if (command == "psram") {
-    bool psramPresente = ESP.getPsramSize() > 0;
-    message = "PSRAM:\nPSRAM Presente: " + String(psramPresente ? "SIM" : "NAO") + 
-              "\nTamanho PSRAM: " + String(ESP.getPsramSize() / 1024 / 1024) + " MB" +
-              "\nPSRAM Livre: " + String(ESP.getFreePsram() / 1024 / 1024) + " MB" +
-              "\nMaior Bloco Livre PSRAM: " + String(ESP.getMaxAllocPsram() / 1024 / 1024) + " MB" +
-              "\nPSRAM Utilizada: " + String(100.0 * (ESP.getPsramSize() - ESP.getFreePsram()) / ESP.getPsramSize()) + " %\n";
-    answerAll(message);
-  }
-  else if (command == "led_cyan")
-  {
-    blinkActive_ = false;
-    breathActive_ = false; // Desativa o modo de respiração se outro comando de LED for recebido
-    led_.cyan();
-    answerAll("LED customizado: Ciano ativo\n");
-  }
+  
+  
+  
+  
+  
+  
+  
+  
   else if (command == "led_breath")
   {
     blinkActive_ = false;
     breathActive_ = true; // Ativa o modo de respiração do LED
     answerAll("Modo do LED alterado para Pulsar (Breathing)\n");
-    led_.breathing(0, 255, 255, 3); // Pulsação em Ciano
-  }
-  else if (command.startsWith("led_color:"))
-  {
-    int firstColon = command.indexOf(':');
-    int secondColon = command.indexOf(':', firstColon + 1);
-    int thirdColon = command.indexOf(':', secondColon + 1);
 
-    if (firstColon >= 0 && secondColon > firstColon && thirdColon > secondColon)
-    {
-      int r = command.substring(firstColon + 1, secondColon).toInt();
-      int g = command.substring(secondColon + 1, thirdColon).toInt();
-      int b = command.substring(thirdColon + 1).toInt();
-
-      if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255) {
-        blinkActive_ = false;
-        breathActive_ = false; // Desativa o modo de respiração se outro comando de LED for recebido
-        led_.setColor(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
-        answerAll("LED definido para RGB(" + String(r) + "," + String(g) + "," + String(b) + ")\n");
-      } else {
-        answerAll("Valores RGB invalidos (Use de 0 a 255)\n");
-      }
-    } else {
-      answerAll("Formato incorreto. Use led_color:R:G:B\n");
-    }
   }
+  
   else if (command == "alive") {
     answerAll("ip: " + WiFi.localIP().toString() + " - yes\n");
   }
+  else if (command == "heap")
+  {
+      uint32_t heapLivre = ESP.getFreeHeap();
+
+      message = "===== MEMORIA RAM =====\n"
+                "Heap livre: " + String(heapLivre) + " bytes\n"
+                "Heap livre: " + String(heapLivre / 1024.0, 1) + " KB\n"
+                "=======================\n";
+
+      answerAll(message);
+  }  
+  else if (command == "heap_min")
+  {
+      uint32_t heapMinimo = ESP.getMinFreeHeap();
+
+      message = "===== HEAP MINIMO =====\n"
+                "Minimo livre: " + String(heapMinimo) + " bytes\n"
+                "Minimo livre: " + String(heapMinimo / 1024.0, 1) + " KB\n"
+                "=======================\n";
+
+      answerAll(message);
+  }
+  
+  else if (command == "chip_info")
+  {
+      message = "===== CHIP INFO =====\n"
+                "Modelo: " + String(ESP.getChipModel()) + "\n"
+                "Revisao: " + String(ESP.getChipRevision()) + "\n"
+                "Cores: " + String(ESP.getChipCores()) + "\n"
+                "CPU: " + String(getCpuFrequencyMhz()) + " MHz\n"
+                "SDK: " + String(ESP.getSdkVersion()) + "\n"
+                "=====================\n";
+
+      answerAll(message);
+  }  
+  else if (command == "flash_info")
+  {
+      uint32_t flashSize = ESP.getFlashChipSize();
+      uint32_t sketchSize = ESP.getSketchSize();
+      uint32_t sketchLivre = ESP.getFreeSketchSpace();
+
+      message = "===== FLASH INFO =====\n"
+                "Flash total: " + String(flashSize / (1024.0 * 1024.0), 2) + " MB\n"
+                "Firmware: " + String(sketchSize / 1024.0, 1) + " KB\n"
+                "OTA livre: " + String(sketchLivre / 1024.0, 1) + " KB\n"
+                "======================\n";
+
+      answerAll(message);
+  }
+  else if (command == "rssi" || command == "ip" || command == "ssid" ||
+           command == "channel" || command == "wifi_status")
+  {
+      if (WiFi.status() != WL_CONNECTED) message = "WiFi desconectado.\n";
+      else if (command == "rssi") message = "RSSI: " + String(WiFi.RSSI()) + " dBm\n";
+      else if (command == "ip") message = "IP: " + WiFi.localIP().toString() + "\n";
+      else if (command == "ssid") message = "SSID: " + WiFi.SSID() + "\n";
+      else if (command == "channel") message = "Canal: " + String(WiFi.channel()) + "\n";
+      else message = "WiFi conectado\nSSID: " + WiFi.SSID() + "\nIP: " +
+                     WiFi.localIP().toString() + "\nRSSI: " + String(WiFi.RSSI()) + " dBm\n";
+      answerAll(message);
+  }
+  else if (command == "clima")
+  {
+      message = "===== CLIMA =====\n"
+                "Temperatura: " +
+                String(ClimaManager::temperatura, 1) +
+                " C\n"
+                "Condicao: " +
+                ClimaManager::obterTextoCondicao() +
+                "\n"
+                "Codigo WMO: " +
+                String(ClimaManager::codigoCondicao) +
+                "\n"
+                "=================\n";
+
+      answerAll(message);
+  }
+  else if (command == "clima_age")
+   {
+    if (ClimaManager::ultimaAtualizacao == 0)
+    {
+        answerAll("Clima ainda nao foi atualizado.\n");
+    }
+    else
+    {
+        uint32_t segundos =
+            (millis() - ClimaManager::ultimaAtualizacao) / 1000UL;
+
+        uint32_t minutos = segundos / 60;
+        segundos %= 60;
+
+        message = "===== CLIMA AGE =====\n"
+                  "Ultima atualizacao:\n" +
+                  String(minutos) + " min " +
+                  String(segundos) + " s atras\n"
+                  "=====================\n";
+
+        answerAll(message);
+    }
+  }
+  else if (command.startsWith("sd_"))
+  {
+      executarSd(command);
+  }
+  else if (command == "health")
+  {
+      executarHealth();
+  }
+  else if (command == "selftest")
+  {
+      executarSelfTest();
+  }
+
   else
   {
-    answerAll("Comando invalido\n");
+      answerAll("Comando invalido\n");
+    }
+}
+
+void CommandProcessor::executarSd(const String& command)
+{
+  const size_t maxBytes = 1000;
+  String name = command;
+  String arg = "";
+  int sep = command.indexOf(":");
+  if (sep >= 0)
+  {
+    name = command.substring(0, sep);
+    arg = command.substring(sep + 1);
+  }
+
+  if (!sdReady_)
+  {
+    sdReady_ = sd_.begin();
+    if (!sdReady_)
+    {
+      answerAll("SD indisponivel\n", false);
+      return;
+    }
+  }
+
+  if (name == "sd_status")
+  {
+    const uint64_t mib = 1024ULL * 1024ULL;
+    uint64_t total = sd_.getCardSizeBytes();
+    uint64_t used = sd_.getUsedBytes();
+    answerAll("SD: pronto\nTipo: " + sd_.getCardType() +
+              "\nTotal: " + String((unsigned long)(total / mib)) + " MiB" +
+              "\nUsado: " + String((unsigned long)(used / mib)) + " MiB" +
+              "\nLivre: " + String((unsigned long)((total > used ? total - used : 0) / mib)) + " MiB\n", false);
+    return;
+  }
+  if (name == "sd_test")
+  {
+    answerAll(sd_.test() ? "SD teste: OK\n" : "SD teste: FALHOU\n", false);
+    return;
+  }
+  if (name == "sd_log")
+  {
+    String log = sd_.readTail("/log.txt", maxBytes);
+    answerAll(log.length() ? log : String("Log vazio\n"), false);
+    return;
+  }
+  if (name == "sd_clear_log")
+  {
+    answerAll(sd_.removeFile("/log.txt") ? "Log apagado\n" : "Log inexistente\n", false);
+    return;
+  }
+
+  String text = "";
+  if (name == "sd_write" || name == "sd_append")
+  {
+    int sep2 = arg.indexOf(":");
+    if (sep2 < 0)
+    {
+      answerAll("Uso: " + name + ":/arquivo:texto\n", false);
+      return;
+    }
+    text = arg.substring(sep2 + 1);
+    arg = arg.substring(0, sep2);
+  }
+
+  if (name == "sd_list" && arg.length() == 0)
+  {
+    arg = "/";
+  }
+  if (arg.length() == 0 || arg[0] != 0x2F || arg.indexOf("..") >= 0)
+  {
+    answerAll("Caminho invalido (use /caminho)\n", false);
+    return;
+  }
+
+  if (name == "sd_list")
+  {
+    String list = sd_.listFiles(arg);
+    if (list.length() > maxBytes) list = list.substring(0, maxBytes) + "\n...\n";
+    answerAll(list.length() ? list : String("(vazio)\n"), false);
+  }
+  else if (name == "sd_read")
+  {
+    if (!sd_.exists(arg))
+    {
+      answerAll("Arquivo nao encontrado\n", false);
+      return;
+    }
+    String content = sd_.readTail(arg, maxBytes);
+    if (sd_.getFileSize(arg) > maxBytes) content = "[ultimos " + String((unsigned)maxBytes) + " bytes]\n" + content;
+    answerAll(content.length() ? content : String("(arquivo vazio)\n"), false);
+  }
+  else if (name == "sd_write")
+  {
+    answerAll(sd_.writeText(arg, text) ? "Gravado\n" : "Falha ao gravar\n", false);
+  }
+  else if (name == "sd_append")
+  {
+    answerAll(sd_.appendText(arg, text + "\n") ? "Adicionado\n" : "Falha ao gravar\n", false);
+  }
+  else if (name == "sd_del")
+  {
+    answerAll(sd_.removeFile(arg) ? "Apagado\n" : "Falha ao apagar\n", false);
+  }
+  else if (name == "sd_mkdir")
+  {
+    answerAll(sd_.createDir(arg) ? "Pasta criada\n" : "Falha ao criar pasta\n", false);
+  }
+  else if (name == "sd_rmdir")
+  {
+    answerAll(sd_.removeDir(arg) ? "Pasta removida\n" : "Falha (pasta nao vazia?)\n", false);
+  }
+  else
+  {
+    answerAll("Comando SD invalido\n", false);
   }
 }
 
@@ -581,46 +704,11 @@ String CommandProcessor::obterMotivoReset() {
 
 void CommandProcessor::update()
 {
-  if (breathActive_) {
-    led_.breathingTask(0, 255, 255); // Roda a tarefa não bloqueante em Ciano
+  if (breathActive_) 
+  {
+    led_.breathingTask(0, 255, 255); // Roda a tarefa não bloqueante do LED
   }
   
-  // 1. Processamento da varredura Wi-Fi assíncrona
-  if (scanningWifi_)
-  {
-    int16_t n = WiFi.scanComplete();
-    if (n >= 0) // Varredura concluída com sucesso
-    {
-      String json = "{\n  \"total_redes\": " + String(n) + ",\n  \"redes\": [\n";
-      for (int i = 0; i < n; ++i)
-      {
-        json += "    {\n";
-        json += "      \"ssid\": \"" + WiFi.SSID(i) + "\",\n";
-        json += "      \"rssi\": " + String(WiFi.RSSI(i)) + ",\n";
-        json += "      \"canal\": " + String(WiFi.channel(i)) + "\n";
-        json += "    }";
-        if (i < n - 1) json += ",";
-        json += "\n";
-      }
-      json += "  ]\n}";
-      
-      // Salva usando o método protegido contra concorrência do Display
-      if (sd_.writeJson("/netscan.json", json)) {
-        answerAll("[NET_SCAN] Concluido. Dados salvos em /netscan.json\n");
-      } else {
-        answerAll("[NET_SCAN] Concluido, mas falhou ao gravar arquivo JSON.\n");
-      }
-      
-      WiFi.scanDelete(); // Limpa a memória alocada pelo scan
-      scanningWifi_ = false;
-    }
-    else if (n == WIFI_SCAN_FAILED)
-    {
-      answerAll("[NET_SCAN] Falha ao executar varredura de redes.\n");
-      scanningWifi_ = false;
-    }
-  }
-
   // 2. Manutencao do Blink do LED (Mantenha o seu codigo original abaixo)
   if (!blinkActive_ || millis() - lastBlinkChange_ < blinkInterval_)
   {
@@ -641,4 +729,332 @@ void CommandProcessor::update()
       blinkActive_ = false;
     }
   }
+}
+
+void CommandProcessor::executarHealth()
+{
+    int totalTestes = 0;
+    int testesOK = 0;
+
+    String resultado;
+
+    resultado = "\n===== SYSTEM HEALTH =====\n\n";
+
+
+    // =========================================================
+    // WI-FI
+    // =========================================================
+
+    totalTestes++;
+
+    bool wifiOK = (WiFi.status() == WL_CONNECTED);
+
+    if (wifiOK)
+    {
+        testesOK++;
+
+        int32_t rssi = WiFi.RSSI();
+
+        resultado += "WiFi....... OK   ";
+        resultado += String(rssi);
+        resultado += " dBm\n";
+    }
+    else
+    {
+        resultado += "WiFi....... FAIL\n";
+    }
+
+
+    // =========================================================
+    // NTP
+    // =========================================================
+
+    totalTestes++;
+
+    bool ntpOK = ntp_.isSincronizado();
+
+    if (ntpOK)
+    {
+        testesOK++;
+        resultado += "NTP........ OK\n";
+    }
+    else
+    {
+        resultado += "NTP........ FAIL\n";
+    }
+
+
+    // =========================================================
+    // MEMORIA RAM
+    // =========================================================
+
+    totalTestes++;
+
+    uint32_t heapLivre = ESP.getFreeHeap();
+    uint32_t heapMinimo = ESP.getMinFreeHeap();
+
+    bool ramOK = heapLivre >= (40 * 1024);
+
+    if (ramOK)
+    {
+        testesOK++;
+        resultado += "RAM........ OK   ";
+    }
+    else
+    {
+        resultado += "RAM........ LOW  ";
+    }
+
+    resultado += String(heapLivre / 1024);
+    resultado += " KB\n";
+
+
+    // =========================================================
+    // CLIMA
+    // =========================================================
+
+    totalTestes++;
+
+    bool climaOK = false;
+
+    if (ClimaManager::ultimaAtualizacao != 0)
+    {
+        uint32_t idadeClima =
+            millis() - ClimaManager::ultimaAtualizacao;
+
+        // Consideramos os dados validos por ate 30 minutos.
+        climaOK = idadeClima <= 1800000UL;
+    }
+
+    if (climaOK)
+    {
+        testesOK++;
+
+        resultado += "Clima...... OK   ";
+        resultado += String(ClimaManager::temperatura, 1);
+        resultado += " C\n";
+    }
+    else
+    {
+        resultado += "Clima...... STALE\n";
+    }
+
+    // =========================================================
+    // CALCULO DO HEALTH
+    // =========================================================
+
+    int health = 0;
+
+    if (totalTestes > 0)
+    {
+        health = (testesOK * 100) / totalTestes;
+    }
+
+    // =========================================================
+    // STATUS GERAL
+    // =========================================================
+
+    String statusGeral;
+
+    if (health == 100)
+    {
+        statusGeral = "EXCELENTE";
+    }
+    else if (health >= 80)
+    {
+        statusGeral = "BOM";
+    }
+    else if (health >= 60)
+    {
+        statusGeral = "ATENCAO";
+    }
+    else
+    {
+        statusGeral = "CRITICO";
+    }
+
+    // =========================================================
+    // RESULTADO
+    // =========================================================
+
+    resultado += "\n-------------------------\n";
+
+    resultado += "Health..... ";
+    resultado += String(health);
+    resultado += "%\n";
+
+    resultado += "Status..... ";
+    resultado += statusGeral;
+    resultado += "\n";
+
+    resultado += "Heap min... ";
+    resultado += String(heapMinimo / 1024);
+    resultado += " KB\n";
+
+    resultado += "\n=========================\n";
+
+    answerAll(resultado);
+}
+
+void CommandProcessor::executarSelfTest()
+{
+    int totalTestes = 0;
+    int testesOK = 0;
+
+    String resultado;
+
+    resultado.reserve(700);
+
+    resultado = "\n===== SELF TEST =====\n\n";
+
+
+    // =========================================================
+    // 1. WI-FI
+    // =========================================================
+
+    totalTestes++;
+
+    bool wifiOK = (WiFi.status() == WL_CONNECTED);
+
+    if (wifiOK)
+    {
+        testesOK++;
+
+        resultado += "WiFi.......... PASS  ";
+        resultado += String(WiFi.RSSI());
+        resultado += " dBm\n";
+    }
+    else
+    {
+        resultado += "WiFi.......... FAIL\n";
+    }
+
+
+    // =========================================================
+    // 2. NTP
+    // =========================================================
+
+    totalTestes++;
+
+    bool ntpOK = ntp_.isSincronizado();
+
+    if (ntpOK)
+    {
+        testesOK++;
+        resultado += "NTP........... PASS\n";
+    }
+    else
+    {
+        resultado += "NTP........... FAIL\n";
+    }
+
+
+    // =========================================================
+    // 5. RAM
+    // =========================================================
+
+    totalTestes++;
+
+    uint32_t heapLivre = ESP.getFreeHeap();
+    uint32_t heapMinimo = ESP.getMinFreeHeap();
+
+    bool ramOK = heapLivre >= (40 * 1024);
+
+    if (ramOK)
+    {
+        testesOK++;
+
+        resultado += "RAM........... PASS  ";
+        resultado += String(heapLivre / 1024);
+        resultado += " KB\n";
+    }
+    else
+    {
+        resultado += "RAM........... FAIL  ";
+        resultado += String(heapLivre / 1024);
+        resultado += " KB\n";
+    }
+
+
+    // =========================================================
+    // 6. CLIMA
+    // =========================================================
+
+    totalTestes++;
+
+    bool climaOK = false;
+
+    if (ClimaManager::ultimaAtualizacao != 0)
+    {
+        uint32_t idade =
+            millis() - ClimaManager::ultimaAtualizacao;
+
+        climaOK = idade <= 1800000UL;
+    }
+
+    if (climaOK)
+    {
+        testesOK++;
+
+        resultado += "Clima......... PASS  ";
+        resultado += String(ClimaManager::temperatura, 1);
+        resultado += " C\n";
+    }
+    else
+    {
+        resultado += "Clima......... FAIL\n";
+    }
+
+
+    // =========================================================
+    // 7. CPU
+    // =========================================================
+
+    totalTestes++;
+
+    uint32_t cpuMHz = getCpuFrequencyMhz();
+
+    bool cpuOK = cpuMHz > 0;
+
+    if (cpuOK)
+    {
+        testesOK++;
+
+        resultado += "CPU........... PASS  ";
+        resultado += String(cpuMHz);
+        resultado += " MHz\n";
+    }
+    else
+    {
+        resultado += "CPU........... FAIL\n";
+    }
+
+
+    // =========================================================
+    // RESULTADO FINAL
+    // =========================================================
+
+    resultado += "\n-------------------------\n";
+
+    if (testesOK == totalTestes)
+    {
+        resultado += "RESULTADO: PASS\n";
+    }
+    else
+    {
+        resultado += "RESULTADO: FAIL\n";
+    }
+
+    resultado += String(testesOK);
+    resultado += " / ";
+    resultado += String(totalTestes);
+    resultado += " testes OK\n";
+
+    resultado += "Heap min: ";
+    resultado += String(heapMinimo / 1024);
+    resultado += " KB\n";
+
+    resultado += "=========================\n";
+
+    answerAll(resultado);
 }

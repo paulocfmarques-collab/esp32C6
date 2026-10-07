@@ -5,8 +5,8 @@
 
 class NTPUtil {
 private:
-    int32_t fusoHora; 
-    bool dstAtivo;    
+    int32_t fusoHora = -3;
+    bool dstAtivo = false;
 
     void aplicarConfiguracaoNTP();
 
@@ -18,6 +18,9 @@ public:
     // Declaração explícita das funções exigidas pelo CommandProcessor
     bool isSincronizado();
     String getSomenteHora();
+    bool ajustarDataHora(int ano, int mes, int dia, int hora, int minuto, int segundo);
+    int32_t getFusoHora() const;
+    bool isDstAtivo() const;
 
     void atualizarConfiguracao(int32_t novoFuso, bool novoDst);
     void carregarConfiguracoes();

@@ -49,11 +49,16 @@ public:
     bool begin();
     void executeCommand(String command);
     void update();
+    void executarSd(const String& command);
+    bool ledBusy() const { return blinkActive_ || breathActive_; }
 
 private:
     void answerAll(String message, bool log = true);
     void saveLog(String message);
     void startBlink(uint16_t pulses, uint32_t interval, bool continuous);
+    void executarHealth();
+    void executarSelfTest();
+    void executarDiagnostico();    
     String obterMotivoReset();
 
     DisplayUtil& display_;

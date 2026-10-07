@@ -12,6 +12,7 @@ public:
     bool test();
     String getCardType();
     uint64_t getCardSizeBytes();
+    uint64_t getUsedBytes();
 
     bool exists(String path);
     bool writeText(String path, String text);
@@ -22,6 +23,9 @@ public:
     String listFiles(String path = "/");
     bool writeJson(String path, String jsonContent);
     String readJson(String path);
+    uint64_t getFileSize(String path);
+    String readTail(String path, size_t maxBytes);
+    bool removeDir(String path);
 
 private:
     SdFat sdCard; // Nova instância estável gerenciada pela SdFat
