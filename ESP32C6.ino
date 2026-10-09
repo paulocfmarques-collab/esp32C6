@@ -7,6 +7,7 @@
 #include "OTAManager.h"
 #include "ClimaManager.h"
 #include <WiFi.h>
+#include "SerialConsole.h"
 
 constexpr uint8_t USER_BUTTON_PIN = 9; // Botao BOOT onboard da Waveshare ESP32-C6-LCD-1.47
 
@@ -16,10 +17,11 @@ ESP32Gateway gateway;
 NTPUtil ntp;
 SDUtil sd;
 CommandProcessor commandProcessor(display, gateway, ntp, rgbLed, sd);
+SerialConsole serialConsole;
 
 bool otaInicializadoCompleto = false;
 bool sdDisponivel = false;
-enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_COUNT };
+enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_COUNT };
 uint32_t tempoUltimoComando = 0; // Monitor de ociosidade
 
 void setup() 
@@ -28,30 +30,24 @@ void setup()
   delay(100); 
   pinMode(USER_BUTTON_PIN, INPUT_PULLUP);
 
+  pinMode(4, OUTPUT); digitalWrite(4, HIGH);
+  pinMode(14, OUTPUT); digitalWrite(14, HIGH);
+  SharedSpi::begin();
+  // Coloca o cartao em modo SPI antes de enviar comandos ao LCD.
+  sdDisponivel = commandProcessor.begin();
   display.begin();
   display.setRotation(1); 
   display.clear();
   display.println("Sistema Inicializando...");
   delay(200); 
 
-  sdDisponivel = commandProcessor.begin();
   delay(100);
 
   rgbLed.begin();
   gateway.begin();
-  ntp.carregarConfiguracoes();
-
-  if (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED)
-  {
-    ntp.initNTP();
-    
-    // Sincroniza o clima logo após obter o horário correto da rede
-    ClimaManager::atualizar();
-    
-    OTAManager::begin("ESP32-C6-Gateway");
-    otaInicializadoCompleto = true;
-  }
+  ntp.initNTP();
   tempoUltimoComando = millis();
+  Serial.println("[Serial] Console pronto: 115200 baud, termine com Enter. Digite help.");
 }
 
 
@@ -62,30 +58,38 @@ struct SdInfoCache
   uint64_t used = 0;
 };
 SdInfoCache sdInfo;
-volatile bool sdReading = false;
+bool sdReading = false;
+portMUX_TYPE sdCacheMux = portMUX_INITIALIZER_UNLOCKED;
 bool sdLoadingShown = false;
 
 void sdInfoTask(void*)
 {
+  SdInfoCache next;
   String type = sd.getCardType();
-  strncpy(sdInfo.type, type.c_str(), sizeof(sdInfo.type) - 1);
-  sdInfo.type[sizeof(sdInfo.type) - 1] = '\0';
-  sdInfo.total = sd.getCardSizeBytes();
-  sdInfo.used = sd.getUsedBytes();
-  sdReading = false;
+  strncpy(next.type, type.c_str(), sizeof(next.type) - 1);
+  next.type[sizeof(next.type) - 1] = '\0';
+  next.total = sd.getCardSizeBytes();
+  next.used = sd.getUsedBytesCooperative();
+  portENTER_CRITICAL(&sdCacheMux);
+  sdInfo = next; sdReading = false;
+  portEXIT_CRITICAL(&sdCacheMux);
   vTaskDelete(NULL);
 }
 
 void startSdRead()
 {
-  if (sdReading || !sdDisponivel)
+  portENTER_CRITICAL(&sdCacheMux); bool running=sdReading; portEXIT_CRITICAL(&sdCacheMux);
+  if (running || !sdDisponivel)
   {
     return;
   }
-  sdReading = true;
+  portENTER_CRITICAL(&sdCacheMux); sdReading = true; portEXIT_CRITICAL(&sdCacheMux);
+  display.clear();
+  display.showSdLoading(0);
+  sdLoadingShown = true;
   if (xTaskCreate(sdInfoTask, "sdinfo", 4096, NULL, 1, NULL) != pdPASS)
   {
-    sdReading = false;
+    portENTER_CRITICAL(&sdCacheMux); sdReading = false; portEXIT_CRITICAL(&sdCacheMux);
   }
 }
 
@@ -104,6 +108,9 @@ void loop()
   static int8_t lastLedState = -1;
   String comando;
 
+  SdInfoCache sdSnapshot; bool sdBusy;
+  portENTER_CRITICAL(&sdCacheMux); sdSnapshot=sdInfo; sdBusy=sdReading; portEXIT_CRITICAL(&sdCacheMux);
+  display.updatePower();
   gateway.handleClient();
   commandProcessor.update();  
 
@@ -117,6 +124,7 @@ void loop()
     buttonState = buttonReading;
     if (buttonState == LOW)
     {
+      display.wake();
       buttonPressedAt = millis();
       holdStage = 0;
     }
@@ -187,22 +195,32 @@ void loop()
     OTAManager::handle();
     ClimaManager::atualizar(); // Mantém o clima sincronizado a cada 15 min
   }
-  else if (!otaInicializadoCompleto && WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED)
+  else if (!otaInicializadoCompleto && WiFi.status() == WL_CONNECTED)
   {
     OTAManager::begin("ESP32-C6-Gateway");
     otaInicializadoCompleto = true;
   }
 
-  // Se receber comando UDP, zera o temporizador do Screensaver e acorda o display
-  if (gateway.receiveCommand(comando))
+  // Comandos UDP e serial usam o mesmo processamento e acordam o display.
+  const bool serialCommand = serialConsole.poll(Serial, comando);
+  if (serialCommand || gateway.receiveCommand(comando))
   {
+    display.wake();
     display.setRotation(0);
     showingDashboard = false;
-    commandProcessor.executeCommand(comando);
+    commandProcessor.executeCommand(comando, serialCommand);
+    sdDisponivel = commandProcessor.sdReady();
     responseUntil = millis() + 10000;
     tempoUltimoComando = millis(); // Reseta Protetor de Tela
   }
 
+  int pageRequest=display.takePageRequest();
+  if(pageRequest!=-1){
+    currentPage=pageRequest==-2 ? (currentPage+1)%PAGE_COUNT : pageRequest;
+    showingDashboard=true; display.setRotation(1); display.clear(); lastClockUpdate=0;
+    statusPageShownAt=tempoUltimoComando=millis();
+    if(currentPage==PAGE_SD)startSdRead();
+  }
   commandProcessor.update();
 
   // Controle de estados da tela (Console Log -> Relógio/Dashboard -> Protetor de Tela)
@@ -216,6 +234,12 @@ void loop()
 
   if (showingDashboard)
   {
+    // A consulta pode ter iniciado/terminado desde o inicio deste loop.
+    portENTER_CRITICAL(&sdCacheMux);
+    sdSnapshot = sdInfo;
+    sdBusy = sdReading;
+    portEXIT_CRITICAL(&sdCacheMux);
+    if (currentPage == PAGE_SD && sdBusy) statusPageShownAt = millis();
     if (currentPage != 0 && millis() - statusPageShownAt >= 30000)
     {
       currentPage = 0;
@@ -226,11 +250,11 @@ void loop()
     // Se estiver ocioso há mais de 60 segundos, roda a cascata Sci-Fi hacker
     if (millis() - tempoUltimoComando > 900000) 
     {
-      display.desenharMatrixScreensaver();
+      // Backlight is off after 15 minutes; avoid unnecessary SPI redraws.
       lastClockUpdate = millis(); // Evita desenhar o relógio por cima
     } 
     // Caso contrário, renderiza o painel completo atualizado de 1 em 1 segundo
-    else if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdReading) ? 100UL : 1000UL)) 
+    else if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : 1000UL))
     {
       if (currentPage == 0)
       {
@@ -268,11 +292,12 @@ void loop()
         }
         display.showSavedWifiPage(ssids, conectada, gateway.nextSlot());
       }
-      else if (sdReading)
+      else if (currentPage == PAGE_MONITOR) display.showMonitorPage();
+      else if (currentPage == PAGE_FORECAST) display.showForecastPage();
+      else if (sdBusy)
       {
-        static uint8_t sdFrame = 0;
         sdLoadingShown = true;
-        display.showSdLoading(sdFrame++ % 8);
+        display.showSdLoading((millis() / 70) % 16);
       }
       else
       {
@@ -282,8 +307,8 @@ void loop()
           display.clear();
           sdLoadingShown = false;
         }
-        display.showSdPage(sdDisponivel, sdDisponivel ? String(sdInfo.type) : "--",
-                           sdInfo.total, sdInfo.used);
+        display.showSdPage(sdDisponivel, sdDisponivel ? String(sdSnapshot.type) : "--",
+                           sdSnapshot.total, sdSnapshot.used);
       }      lastClockUpdate = millis();
     }
   }

@@ -1,0 +1,172 @@
+[
+  {
+    "added_include_path": "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\cores\\esp32"
+  },
+  {
+    "added_include_path": "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\variants\\esp32c6"
+  },
+  {
+    "compile": {
+      "source_path": "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged",
+      "depfile_path": "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged.libsdetect.d"
+    },
+    "compile_task": {
+      "args": [
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-rv32\\2601/bin/riscv32-esp-elf-g++",
+        "-c",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=160000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_ESP32C6_DEV",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"ESP32C6_DEV\"",
+        "-DARDUINO_VARIANT=\"esp32c6\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"windows\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:esp32c6\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_MODE=1",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/defines",
+        "-IC:\\PC\\ESP32\\ESP32C6\\diagnosticos\\SD_SPI_Diagnostico",
+        "-iprefix",
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/include/",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/includes",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/qio_qspi/include",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\cores\\esp32",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\variants\\esp32c6",
+        "@C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build/build_opt.h",
+        "@C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build/file_opts",
+        "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged",
+        "-o",
+        "nul",
+        "-MMD",
+        "-MF",
+        "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged.libsdetect.d"
+      ]
+    }
+  },
+  {
+    "missing_include_h": "SPI.h"
+  },
+  {
+    "added_include_path": "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\libraries\\SPI\\src"
+  },
+  {
+    "compile": {
+      "source_path": "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged",
+      "depfile_path": "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged.libsdetect.d"
+    },
+    "compile_task": {
+      "args": [
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-rv32\\2601/bin/riscv32-esp-elf-g++",
+        "-c",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=160000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_ESP32C6_DEV",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"ESP32C6_DEV\"",
+        "-DARDUINO_VARIANT=\"esp32c6\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"windows\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:esp32c6\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_MODE=1",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/defines",
+        "-IC:\\PC\\ESP32\\ESP32C6\\diagnosticos\\SD_SPI_Diagnostico",
+        "-iprefix",
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/include/",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/includes",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/qio_qspi/include",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\cores\\esp32",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\variants\\esp32c6",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\libraries\\SPI\\src",
+        "@C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build/build_opt.h",
+        "@C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build/file_opts",
+        "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged",
+        "-o",
+        "nul",
+        "-MMD",
+        "-MF",
+        "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\sketch\\SD_SPI_Diagnostico.ino.cpp.merged.libsdetect.d"
+      ]
+    }
+  },
+  {
+    "missing_include_h": ""
+  },
+  {
+    "compile": {
+      "source_path": "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\libraries\\SPI\\src\\SPI.cpp",
+      "depfile_path": "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\libraries\\SPI\\SPI.cpp.libsdetect.d"
+    },
+    "compile_task": {
+      "args": [
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp-rv32\\2601/bin/riscv32-esp-elf-g++",
+        "-c",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=160000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_ESP32C6_DEV",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"ESP32C6_DEV\"",
+        "-DARDUINO_VARIANT=\"esp32c6\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"windows\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:esp32c6\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_MODE=1",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/defines",
+        "-IC:\\PC\\ESP32\\ESP32C6\\diagnosticos\\SD_SPI_Diagnostico",
+        "-iprefix",
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/include/",
+        "@C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/flags/includes",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\esp32c6-libs\\3.3.12/qio_qspi/include",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\cores\\esp32",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\variants\\esp32c6",
+        "-IC:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\libraries\\SPI\\src",
+        "@C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build/build_opt.h",
+        "@C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build/file_opts",
+        "C:\\Users\\paulo\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.12\\libraries\\SPI\\src\\SPI.cpp",
+        "-o",
+        "nul",
+        "-MMD",
+        "-MF",
+        "C:\\PC\\ESP32\\ESP32C6\\tmp\\sd-diagnostico-build\\libraries\\SPI\\SPI.cpp.libsdetect.d"
+      ]
+    }
+  },
+  {
+    "missing_include_h": ""
+  }
+]

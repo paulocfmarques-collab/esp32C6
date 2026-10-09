@@ -2,6 +2,7 @@
 #define OTA_MANAGER_H
 
 #include <ArduinoOTA.h>
+#include "SharedSpi.h"
 #include <WiFi.h>
 #include "DisplayUtil.h"
 #include "RGBLed.h"
@@ -18,6 +19,7 @@ public:
         ArduinoOTA.setHostname(hostname);
 
         ArduinoOTA.onStart([]() {
+            SharedSpi::Guard spiGuard;
             ultimoPercentual = -1;
             
             // Força o rádio Wi-Fi a trabalhar na velocidade máxima
@@ -56,7 +58,8 @@ public:
         });
 
         ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-            int percentage = (progress / (total / 100));
+            SharedSpi::Guard spiGuard;
+            int percentage = total ? int(uint64_t(progress)*100/total) : 0;
             
             // Atualiza apenas de 2% em 2% para manter o desempenho rápido
             if (percentage >= ultimoPercentual + 2 || percentage == 100) {
@@ -92,6 +95,7 @@ public:
         });
 
         ArduinoOTA.onEnd([]() {
+            SharedSpi::Guard spiGuard;
             WiFi.setSleep(true); 
             Serial.println("\n[OTA] Concluido!");
             
@@ -118,6 +122,7 @@ public:
         });
 
         ArduinoOTA.onError([](ota_error_t error) {
+            SharedSpi::Guard spiGuard;
             WiFi.setSleep(true); 
             Arduino_ST7789* gfx = display.getDisplay();
             gfx->fillScreen(0x0000);

@@ -13,6 +13,7 @@ public:
     String getCardType();
     uint64_t getCardSizeBytes();
     uint64_t getUsedBytes();
+    uint64_t getUsedBytesCooperative();
 
     bool exists(String path);
     bool writeText(String path, String text);
@@ -26,6 +27,7 @@ public:
     uint64_t getFileSize(String path);
     String readTail(String path, size_t maxBytes);
     bool removeDir(String path);
+    bool renameFile(const String& from,const String& to);
 
 private:
     SdFat sdCard; // Nova instância estável gerenciada pela SdFat

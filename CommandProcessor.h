@@ -47,7 +47,8 @@ public:
                      RGBLed& led, SDUtil& sd);
 
     bool begin();
-    void executeCommand(String command);
+    bool sdReady() const { return sdReady_; }
+    void executeCommand(String command, bool fromSerial = false);
     void update();
     void executarSd(const String& command);
     bool ledBusy() const { return blinkActive_ || breathActive_; }
@@ -68,6 +69,7 @@ private:
     SDUtil& sd_;
 
     bool sdReady_ = false;
+    bool serialReply_ = false;
     bool blinkActive_ = false;
     bool blinkOn_ = false;
     bool blinkContinuous_ = false;

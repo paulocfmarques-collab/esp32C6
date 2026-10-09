@@ -35,15 +35,9 @@ bool NTPUtil::initNTP() {
     carregarConfiguracoes();
     aplicarConfiguracaoNTP();
 
-    for (int tentativa = 0; tentativa < 15; tentativa++) {
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo, 1000)) {
-            Serial.println("[NTP] Sincronizacao concluida.");
-            return true;
-        }
-        delay(500);
-    }
-    return false;
+    struct tm timeinfo;
+    return getLocalTime(&timeinfo, 10); // Synchronization continues in the background.
+
 }
 
 void NTPUtil::atualizarConfiguracao(int32_t novoFuso, bool novoDst) {

@@ -4,9 +4,16 @@
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <vector>
+#include "NetworkMonitor.h"
 
 class DisplayUtil {
 private:
+    const NetworkMonitor* monitor_=nullptr;
+    String connecting_;
+    uint8_t brightness_=80;
+    bool backlightReady_=false,powerSleeping_=false;
+    uint32_t lastActivity_=0;
+    int requestedPage_=-1;
     Arduino_ST7789* gfx;
     std::vector<String> lines;
     uint16_t textColor;
@@ -26,6 +33,18 @@ private:
 public:
     DisplayUtil();
     void begin();
+    void setMonitor(const NetworkMonitor* m){monitor_=m;}
+    void setConnecting(const String& name){connecting_=name;}
+    void setBacklight(uint8_t percent);
+    void wake();
+    void updatePower();
+    uint8_t brightness()const{return brightness_;}
+    void selectPage(uint8_t page){requestedPage_=page;wake();}
+    void nextPage(){requestedPage_=-2;wake();}
+    int takePageRequest(){int r=requestedPage_;requestedPage_=-1;return r;}
+    void clearConsole(){clear();}
+    void showMonitorPage();
+    void showForecastPage();
     void clear();
     void setTextColor(uint16_t color);
     void setBackgroundColor(uint16_t color);

@@ -35,7 +35,7 @@ void CommandProcessor::saveLog(String message)
 void CommandProcessor::answerAll(String message, bool log)
 {
   Serial.print(message);
-  gateway_.sendMessage(message);
+  if (!serialReply_) gateway_.sendMessage(message);
   if (log)
   {
     saveLog(message);
@@ -53,23 +53,30 @@ void CommandProcessor::startBlink(uint16_t pulses, uint32_t interval, bool conti
   led_.white();
 }
 
-void CommandProcessor::executeCommand(String command)
+void CommandProcessor::executeCommand(String command, bool fromSerial)
 {
-  command.trim();
+  serialReply_ = fromSerial;
+  // Preserve spaces inside credentials and SD payloads. Strip transport line endings only.
+  while(command.endsWith("\r") || command.endsWith("\n"))command.remove(command.length()-1);
+  if(command.indexOf(':')<0)command.trim();
   if (command.length() == 0)
   {
     return;
   }
 
-  String commandLog = "> " + command + "\n";
+  int separator=command.indexOf(':');
+  String name=separator<0 ? command : command.substring(0,separator); name.trim(); name.toLowerCase();
+  command=name+(separator<0 ? String("") : command.substring(separator));
+  String safeCommand=name=="wifi_add" ? "wifi_add:[credenciais ocultas]" : command;
+  String commandLog = "> " + safeCommand + "\n";
   String message = "";
   Serial.print(commandLog);
-  display_.println("> " + command);
+  display_.println("> " + safeCommand);
 
   
   if (command == "help")
   {
-    message = "COMANDOS ESP32-C3\n"
+    message = "COMANDOS ESP32-C6\n"
               "[SISTEMA]\n"
               "help\n"
               "info\n"
@@ -92,6 +99,16 @@ void CommandProcessor::executeCommand(String command)
               "health\n"
               "selftest\n"
               "[REDE]\n"
+              "wifi_add:SSID:senha\n"
+              "wifi_list\n"
+              "net_monitor\n"
+              "net_history\n"
+              "[TELA]\n"
+              "tela:0..9\n"
+              "tela_next\n"
+              "brilho:0..100\n"
+              "tela_on\n"
+              "tela_off\n"
               "net_info\n"
               "mac\n"
               "reset_wifi\n"
@@ -129,10 +146,38 @@ void CommandProcessor::executeCommand(String command)
               "[CLIMA]\n"
               "clima\n"
               "clima_age\n"
+              "previsao\n"
               "clima_sync\n"
               "P = pulsos; I = intervalo em ms\n"
               "X = fuso UTC (ex.: -3)\n";
     answerAll(message);
+  }
+  else if (command == "wifi_list") answerAll(gateway_.listarSSIDs(), false);
+  else if (command.startsWith("wifi_add:")) {
+    String args=command.substring(9);int split=args.indexOf(':');String error;
+    if(split<0)answerAll("Uso: wifi_add:SSID:senha (senha vazia para rede aberta)\n",false);
+    else answerAll(gateway_.adicionarRede(args.substring(0,split),args.substring(split+1),error) ? "Rede gravada e verificada. Aplicada na proxima reconexao.\n" : "Falha: "+error+"\n",false);
+  }
+  else if(command=="net_monitor")answerAll(gateway_.monitorReport(),false);
+  else if(command=="net_history")answerAll(sdReady_ ? sd_.readTail("/network_history.log",2000) : "SD indisponivel\n",false);
+  else if(command=="tela_next"){display_.nextPage();answerAll("Proxima pagina\n",false);}
+  else if(command.startsWith("tela:")){
+    String arg=command.substring(5);bool valid=arg.length()==1 && arg[0]>='0' && arg[0]<='9';
+    if(valid){display_.selectPage(arg.toInt());answerAll("Pagina selecionada\n",false);}
+    else answerAll("Uso: tela:0..9\n",false);
+  }
+  else if(command.startsWith("brilho:")){
+    String arg=command.substring(7);bool valid=arg.length()>0 && arg.length()<=3;
+    for(size_t i=0;i<arg.length();i++)if(!isDigit(arg[i]))valid=false;
+    if(valid && arg.toInt()<=100){display_.setBacklight(arg.toInt());display_.wake();answerAll("Brilho ajustado\n",false);}
+    else answerAll("Uso: brilho:0..100\n",false);
+  }
+  else if(command=="tela_off"){display_.setBacklight(0);answerAll("Backlight desligado; rede ativa\n",false);}
+  else if(command=="tela_on"){display_.setBacklight(80);display_.wake();answerAll("Backlight em 80%\n",false);}
+  else if(command=="previsao"){
+    auto weather=ClimaManager::snapshot();
+    if(!weather.previsaoValida)answerAll("Previsao ainda indisponivel\n",false);
+    else answerAll("Porto Alegre "+String(weather.data)+"\nMin: "+String(weather.minima,1)+" C; Max: "+String(weather.maxima,1)+" C\nChuva: "+String(weather.chuva)+"%\nIdade: "+String((millis()-weather.previsaoAtualizada)/60000)+" min\n"+(weather.ultimaFalhou ? "Ultima consulta falhou; exibindo cache\n" : ""),false);
   }
   else if (command == "reboot")
   {
@@ -142,14 +187,8 @@ void CommandProcessor::executeCommand(String command)
   }
   else if (command == "clima_sync")
   {
-    answerAll("Forcando atualizacao manual do clima...\n");
-    // Zera o timer interno para burlar a trava de 15 minutos
-    ClimaManager::ultimaAtualizacao = 0; 
-    ClimaManager::atualizar();
-    
-    message = "Clima Atualizado ->\nTemp: " + String(ClimaManager::temperatura, 1) + 
-              " C\nCondicao: " + ClimaManager::obterTextoCondicao() + "\n";
-    answerAll(message);
+    ClimaManager::atualizar(true);
+    answerAll(WiFi.status()==WL_CONNECTED ? "Consulta de clima solicitada em segundo plano. Use clima/previsao.\n" : "Sem Wi-Fi; consulta indisponivel.\n");
   }
   
   
@@ -165,7 +204,7 @@ void CommandProcessor::executeCommand(String command)
     float flashLivre = (float)ESP.getFreeSketchSpace() / (1024.0 * 1024.0);
 
     message = "===== DEVICE INFO =====\n"
-              "Hostname: ESP32C3\n"
+              "Hostname: ESP32-C6-Gateway\n"
               "Firmware: " + obterVersaoAutomatica() + "\n"
               "Build: " + String(__DATE__) + " " + String(__TIME__) + "\n" +
               "SSID: " + WiFi.SSID() + "\n" +
@@ -514,13 +553,13 @@ void CommandProcessor::executeCommand(String command)
   {
       message = "===== CLIMA =====\n"
                 "Temperatura: " +
-                String(ClimaManager::temperatura, 1) +
+                String(ClimaManager::snapshot().temperatura, 1) +
                 " C\n"
                 "Condicao: " +
                 ClimaManager::obterTextoCondicao() +
                 "\n"
                 "Codigo WMO: " +
-                String(ClimaManager::codigoCondicao) +
+                String(ClimaManager::snapshot().codigoCondicao) +
                 "\n"
                 "=================\n";
 
@@ -528,14 +567,14 @@ void CommandProcessor::executeCommand(String command)
   }
   else if (command == "clima_age")
    {
-    if (ClimaManager::ultimaAtualizacao == 0)
+    if (ClimaManager::snapshot().ultimaAtualizacao == 0)
     {
         answerAll("Clima ainda nao foi atualizado.\n");
     }
     else
     {
         uint32_t segundos =
-            (millis() - ClimaManager::ultimaAtualizacao) / 1000UL;
+            (millis() - ClimaManager::snapshot().ultimaAtualizacao) / 1000UL;
 
         uint32_t minutos = segundos / 60;
         segundos %= 60;
@@ -817,10 +856,10 @@ void CommandProcessor::executarHealth()
 
     bool climaOK = false;
 
-    if (ClimaManager::ultimaAtualizacao != 0)
+    if (ClimaManager::snapshot().ultimaAtualizacao != 0)
     {
         uint32_t idadeClima =
-            millis() - ClimaManager::ultimaAtualizacao;
+            millis() - ClimaManager::snapshot().ultimaAtualizacao;
 
         // Consideramos os dados validos por ate 30 minutos.
         climaOK = idadeClima <= 1800000UL;
@@ -831,7 +870,7 @@ void CommandProcessor::executarHealth()
         testesOK++;
 
         resultado += "Clima...... OK   ";
-        resultado += String(ClimaManager::temperatura, 1);
+        resultado += String(ClimaManager::snapshot().temperatura, 1);
         resultado += " C\n";
     }
     else
@@ -984,10 +1023,10 @@ void CommandProcessor::executarSelfTest()
 
     bool climaOK = false;
 
-    if (ClimaManager::ultimaAtualizacao != 0)
+    if (ClimaManager::snapshot().ultimaAtualizacao != 0)
     {
         uint32_t idade =
-            millis() - ClimaManager::ultimaAtualizacao;
+            millis() - ClimaManager::snapshot().ultimaAtualizacao;
 
         climaOK = idade <= 1800000UL;
     }
@@ -997,7 +1036,7 @@ void CommandProcessor::executarSelfTest()
         testesOK++;
 
         resultado += "Clima......... PASS  ";
-        resultado += String(ClimaManager::temperatura, 1);
+        resultado += String(ClimaManager::snapshot().temperatura, 1);
         resultado += " C\n";
     }
     else

@@ -1,3 +1,4 @@
+#include "SharedSpi.h"
 #include "DisplayUtil.h"
 #include "ClimaManager.h"
 #include <WiFi.h>
@@ -25,10 +26,14 @@ DisplayUtil::DisplayUtil() {
 }
 
 void DisplayUtil::begin() {
+    SharedSpi::Guard spiGuard;
     pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH);
+    backlightReady_=ledcAttach(TFT_BL,5000,8);
+    if(!backlightReady_)Serial.println("Backlight PWM unavailable; using on/off");
+    setBacklight(brightness_);wake();
 
-    Arduino_DataBus* bus = new Arduino_HWSPI(15, 14, 7, 6, GFX_NOT_DEFINED);
+    // DC, CS, SCLK, MOSI, MISO: mesma pinagem do SD no SPI compartilhado.
+    Arduino_DataBus* bus = new Arduino_HWSPI(15, 14, 7, 6, 5, &SPI, true);
     gfx = new Arduino_ST7789(bus, 21, 0, true, 172, 320, 34, 0, 34, 0);
     gfx->begin();
     gfx->setRotation(1); 
@@ -36,6 +41,7 @@ void DisplayUtil::begin() {
 }
 
 void DisplayUtil::clear() {
+    SharedSpi::Guard spiGuard;
     lines.clear();
     ultimaHora = "";
     ultimaData = "";
@@ -43,11 +49,15 @@ void DisplayUtil::clear() {
     gfx->fillScreen(backgroundColor);
 }
 
-void DisplayUtil::setTextColor(uint16_t color) { textColor = color; }
-void DisplayUtil::setBackgroundColor(uint16_t color) { backgroundColor = color; }
-void DisplayUtil::setTextSize(uint8_t size) { textSize = size; }
+void DisplayUtil::setTextColor(uint16_t color) {
+    SharedSpi::Guard spiGuard; textColor = color; }
+void DisplayUtil::setBackgroundColor(uint16_t color) {
+    SharedSpi::Guard spiGuard; backgroundColor = color; }
+void DisplayUtil::setTextSize(uint8_t size) {
+    SharedSpi::Guard spiGuard; textSize = size; }
 
 void DisplayUtil::setRotation(uint8_t rotation) {
+    SharedSpi::Guard spiGuard;
     lines.clear();
     ultimaHora = "";
     ultimaData = "";
@@ -56,11 +66,13 @@ void DisplayUtil::setRotation(uint8_t rotation) {
 }
 
 void DisplayUtil::dispararAnimacaoGravacaoSD() {
+    SharedSpi::Guard spiGuard;
     sdGravandoAnimacao = true;
     fimAnimacaoSD = millis() + 400; 
 }
 
 void DisplayUtil::showClock(String dateTime) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1); 
 
     if (dateTime == "Erro ao obter data e hora" || dateTime.length() < 19) {
@@ -69,10 +81,12 @@ void DisplayUtil::showClock(String dateTime) {
         gfx->setTextColor(0xF800);
         gfx->setTextSize(2);
         
-        String msgErro = "AGUARDANDO CONEXAO NTP...";
+        String msgErro = "AGUARDANDO NTP...";
         int errX = (gfx->width() - (msgErro.length() * 12)) / 2;
         gfx->setCursor(errX, gfx->height() / 2 - 8);
         gfx->print(msgErro);
+        gfx->setTextSize(1);gfx->setCursor(14,112);
+        gfx->print(connecting_.length() ? "Buscando: "+connecting_ : "Aguardando rede / horario");
         return;
     }
 
@@ -127,7 +141,7 @@ void DisplayUtil::showClock(String dateTime) {
         int barX = baseX + (b * 5);  
         int barY = baseY - barHeight;
         if (b < barrasAtivas) {
-            gfx->fillRect(barX, barY, 3, barHeight, COLOR_GREEN); 
+            gfx->fillRect(barX, barY, 3, barHeight, barrasAtivas>=3 ? COLOR_GREEN : barrasAtivas==2 ? 0xFFE0 : 0xF800); 
         } else {
             gfx->drawRect(barX, barY, 3, barHeight, 0x4A49);       
         }
@@ -178,11 +192,11 @@ void DisplayUtil::showClock(String dateTime) {
     gfx->setTextColor(COLOR_CYAN);
     gfx->setTextSize(1);
     gfx->setCursor(climaX, gfx->height() - 38);
-    gfx->print(ClimaManager::sincronizado ? ClimaManager::obterTextoCondicao() : String("Clima..."));
+    gfx->print(ClimaManager::snapshot().sincronizado ? ClimaManager::obterTextoCondicao() : String("Clima..."));
     
     gfx->setCursor(climaX, gfx->height() - 26);
-    if (ClimaManager::sincronizado) {
-        gfx->printf("%.1f C", ClimaManager::temperatura);
+    if (ClimaManager::snapshot().sincronizado) {
+        gfx->printf("%.1f C", ClimaManager::snapshot().temperatura);
     } else {
         gfx->print("-- C");
     }
@@ -214,6 +228,11 @@ void DisplayUtil::showClock(String dateTime) {
         }
     }
 
+    if(WiFi.status()!=WL_CONNECTED){
+        gfx->fillRect(16,114,288,14,backgroundColor);gfx->setTextSize(1);gfx->setTextColor(0xFFE0);gfx->setCursor(18,117);
+        gfx->print(connecting_.length() ? "Buscando: "+connecting_ : "Sem rede: AP ESP32_C6_CONFIG");
+    }else gfx->fillRect(16,114,288,14,backgroundColor);
+
     // --- BARRINHA DE PROGRESSO DOS SEGUNDOS ---
     int secNum = segundos.toInt();
     int larguraMaximaBarra = gfx->width() - 48; 
@@ -225,6 +244,7 @@ void DisplayUtil::showClock(String dateTime) {
 
 void DisplayUtil::showStatusPage(bool sdReady, bool ntpSynchronized, const String& ntpDateTime,
                                  int32_t timezoneOffset, bool daylightSaving, uint8_t part) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
         gfx->fillScreen(backgroundColor);
@@ -276,6 +296,7 @@ void DisplayUtil::showStatusPage(bool sdReady, bool ntpSynchronized, const Strin
 }
 
 void DisplayUtil::showNetworkPage(uint8_t part) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
         gfx->fillScreen(backgroundColor);
@@ -318,6 +339,7 @@ void DisplayUtil::showNetworkPage(uint8_t part) {
 }
 
 void DisplayUtil::showSystemPage() {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
         gfx->fillScreen(backgroundColor);
@@ -352,6 +374,7 @@ void DisplayUtil::showSystemPage() {
     }
 }
 void DisplayUtil::showSavedWifiPage(const String ssids[5], int connectedSlot, uint8_t nextSlot) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
         gfx->fillScreen(backgroundColor);
@@ -385,6 +408,7 @@ void DisplayUtil::showSavedWifiPage(const String ssids[5], int connectedSlot, ui
 }
 
 void DisplayUtil::showHoldMessage(const String& line1, const String& line2, uint16_t color) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     gfx->fillScreen(backgroundColor);
     gfx->drawRect(6, 6, gfx->width() - 12, gfx->height() - 12, color);
@@ -400,6 +424,7 @@ void DisplayUtil::showHoldMessage(const String& line1, const String& line2, uint
 }
 
 void DisplayUtil::showSdLoading(uint8_t frame) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
         gfx->fillScreen(backgroundColor);
@@ -410,26 +435,46 @@ void DisplayUtil::showSdLoading(uint8_t frame) {
         gfx->setCursor(20, 18);
         gfx->print("CARTAO SD");
         gfx->setTextColor(COLOR_WHITE);
-        gfx->setCursor(60, 140);
+        gfx->setCursor((gfx->width() - 14 * 12) / 2, 140);
         gfx->print("Lendo cartao...");
         statusPageInitialized = true;
     }
 
+    frame %= 16;
     const int cx = gfx->width() / 2;
-    const int cy = 88;
-    const int raio = 28;
-    const uint8_t pontos = 8;
+    const int cy = 80;
+    const uint8_t pontos = 16;
+    gfx->fillRect(20, 42, gfx->width() - 40, 92, backgroundColor);
+
+    // Cartao iluminado com trilhas e uma linha de leitura que o atravessa.
+    gfx->fillRoundRect(cx - 21, cy - 29, 42, 58, 5, 0x10A2);
+    gfx->drawRoundRect(cx - 21, cy - 29, 42, 58, 5, COLOR_CYAN);
+    for (uint8_t i = 0; i < 4; ++i) {
+        gfx->fillRect(cx - 14 + i * 8, cy - 23, 5, 11, 0xFEA0);
+        gfx->drawFastVLine(cx - 12 + i * 8, cy - 9, 26, 0x2945);
+    }
+    const int scanY = cy - 8 + (frame * 2);
+    gfx->drawFastHLine(cx - 17, scanY, 34, COLOR_CYAN);
+    gfx->drawFastHLine(cx - 17, scanY + 1, 34, COLOR_WHITE);
+
+    // Pacotes orbitando o cartao, com duas caudas em sentidos opostos.
     for (uint8_t i = 0; i < pontos; i++) {
         float ang = (i * 2.0f * PI) / pontos;
-        int x = cx + static_cast<int>(cosf(ang) * raio);
-        int y = cy + static_cast<int>(sinf(ang) * raio);
+        int x = cx + static_cast<int>(cosf(ang) * 78);
+        int y = cy + static_cast<int>(sinf(ang) * 29);
         uint8_t dist = (frame + pontos - i) % pontos;
-        uint16_t cor = dist == 0 ? COLOR_CYAN : dist == 1 ? 0x0410 : dist < 4 ? 0x2945 : 0x10A2;
-        gfx->fillCircle(x, y, dist == 0 ? 6 : 4, cor);
+        uint8_t opposite = (i + frame) % pontos;
+        uint16_t cor = dist == 0 ? COLOR_WHITE : dist < 3 ? COLOR_CYAN :
+                       opposite < 2 ? COLOR_MAGENTA : dist < 6 ? 0x0410 : 0x2945;
+        gfx->fillCircle(x, y, dist == 0 ? 4 : 2, cor);
     }
+    // Indicador de atividade; nao representa uma porcentagem de progresso.
+    gfx->drawRoundRect(cx - 96, 118, 192, 9, 3, 0x2945);
+    gfx->fillRoundRect(cx - 92 + frame * 9, 120, 45, 5, 2, COLOR_CYAN);
 }
 void DisplayUtil::showSdPage(bool sdReady, const String& cardType,
                              uint64_t totalBytes, uint64_t usedBytes) {
+    SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
         gfx->fillScreen(backgroundColor);
@@ -473,6 +518,7 @@ void DisplayUtil::showSdPage(bool sdReady, const String& cardType,
 }
 
 void DisplayUtil::desenharMatrixScreensaver() {
+    SharedSpi::Guard spiGuard;
     int colunas = gfx->width() / 12;
     for (int i = 0; i < 3; i++) { 
         int x = random(0, colunas) * 12;
@@ -489,9 +535,11 @@ void DisplayUtil::desenharMatrixScreensaver() {
     delay(10); 
 }
 
-void DisplayUtil::print(String text) { println(text); }
+void DisplayUtil::print(String text) {
+    SharedSpi::Guard spiGuard; println(text); }
 
 void DisplayUtil::println(String text) {
+    SharedSpi::Guard spiGuard;
     text.replace("\r", ""); text.replace("\n", "");
     int charWidth = 6 * 2; 
     int maxChars = (gfx->width() - 24) / charWidth;
@@ -504,6 +552,7 @@ void DisplayUtil::println(String text) {
 }
 
 void DisplayUtil::addLine(String line) {
+    SharedSpi::Guard spiGuard;
     lines.push_back(line);
     int lineHeight = 8 * 2; 
     int maxLines = (gfx->height() - 45) / lineHeight; 
@@ -511,6 +560,8 @@ void DisplayUtil::addLine(String line) {
 }
 
 void DisplayUtil::redraw() {
+    SharedSpi::Guard spiGuard;
+    statusPageInitialized=false; ultimaData=""; ultimaHora="";
     gfx->fillScreen(backgroundColor);
     gfx->fillRect(0, 0, gfx->width(), 26, 0x2104); 
     gfx->drawFastHLine(0, 26, gfx->width(), COLOR_CYAN); 
@@ -524,4 +575,38 @@ void DisplayUtil::redraw() {
     }
 }
 
-Arduino_ST7789* DisplayUtil::getDisplay() { return gfx; }
+Arduino_ST7789* DisplayUtil::getDisplay() {
+    SharedSpi::Guard spiGuard; return gfx; }
+
+void DisplayUtil::setBacklight(uint8_t percent){
+ brightness_=min(uint8_t(100),percent);powerSleeping_=false;lastActivity_=millis();
+ if(backlightReady_)ledcWrite(TFT_BL,uint32_t(brightness_)*255/100);else digitalWrite(TFT_BL,brightness_?HIGH:LOW);
+}
+void DisplayUtil::wake(){lastActivity_=millis();powerSleeping_=false;
+ if(backlightReady_)ledcWrite(TFT_BL,uint32_t(brightness_)*255/100);else digitalWrite(TFT_BL,brightness_?HIGH:LOW);
+}
+void DisplayUtil::updatePower(){
+ uint32_t idle=millis()-lastActivity_;
+ uint8_t level=idle>=900000?0:idle>=120000?min(uint8_t(20),brightness_):brightness_;
+ if(backlightReady_)ledcWrite(TFT_BL,uint32_t(level)*255/100);else digitalWrite(TFT_BL,level?HIGH:LOW);
+ powerSleeping_=idle>=900000;
+}
+void DisplayUtil::showMonitorPage(){
+ SharedSpi::Guard guard;if(!monitor_)return;const auto& m=*monitor_;if(!statusPageInitialized){gfx->fillScreen(0);statusPageInitialized=true;}gfx->fillRect(8,32,304,140,0);gfx->setTextSize(2);gfx->setTextColor(0x07FF);
+ gfx->setCursor(8,6);gfx->print("MONITOR DE REDE");gfx->setTextColor(0xFFFF);
+ gfx->setCursor(8,34);gfx->print(!m.connected?String("WiFi desconectado"):!m.hasResult?String("Ping aguardando"):m.replied?"Gateway: "+String(m.rtt)+" ms":String("Gateway: timeout"));
+ gfx->setCursor(8,58);gfx->printf("Quedas:%lu Offline:%lus",(unsigned long)m.drops,(unsigned long)m.offlineSeconds());
+ gfx->setCursor(8,82);gfx->printf("Sem resposta: %lu/%lu",(unsigned long)m.failures,(unsigned long)m.attempts);
+ int peak=10;for(int value:m.history)if(value>peak)peak=value;
+ for(int i=0;i<24;i++){int value=m.history[(m.head+i)%24],x=8+i*12;if(value==-1)gfx->drawFastVLine(x,116,34,0xF800);else if(value>=0){int h=max(1,value*34/peak);gfx->drawFastVLine(x,150-h,h,0x07E0);}}
+ gfx->setTextSize(1);gfx->setCursor(8,158);gfx->print("Verde: RTT / vermelho: sem resposta");
+}
+void DisplayUtil::showForecastPage(){
+ SharedSpi::Guard guard;auto c=ClimaManager::snapshot();if(!statusPageInitialized){gfx->fillScreen(0);statusPageInitialized=true;}gfx->fillRect(8,32,304,140,0);gfx->setTextSize(2);gfx->setTextColor(0x07FF);gfx->setCursor(8,6);gfx->print("PREVISAO DO TEMPO");
+ if(!c.previsaoValida){gfx->setCursor(8,45);gfx->print("Aguardando dados...");return;}
+ gfx->setTextColor(0xFFFF);gfx->setCursor(8,32);gfx->print(c.data);
+ gfx->setCursor(8,58);gfx->printf("Min: %.1f C  Max: %.1f C",c.minima,c.maxima);
+ gfx->setTextColor(0x07E0);gfx->setCursor(8,86);gfx->printf("Chance de chuva: %d%%",c.chuva);
+ gfx->setTextColor(0xFFFF);gfx->setCursor(8,112);gfx->printf("Dados de ha %lu min",(unsigned long)((millis()-c.previsaoAtualizada)/60000));
+ gfx->setTextSize(1);gfx->setCursor(8,146);gfx->print(c.ultimaFalhou?"Falha na atualizacao: dados anteriores":"Probabilidade maxima de precipitacao do dia");
+}
