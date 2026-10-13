@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-12
+
+- Inventário geral de comandos atualizado para refletir o `help` do firmware,
+  incluindo controles de tela, rede, previsão e histórico do SD.
+- Portal `/logs` com log de comandos e historicos de rede, atualizacao automatica e leitura limitada a 8 KiB; rota `/api/logs` restrita aos tres arquivos de log conhecidos.
+- Removido o desligamento automatico da tela; protetor Matrix continuo apos 60 segundos de inatividade, com atualizacao a cada 40 ms e retorno por botao ou comando serial/UDP.
+- Mantida a reducao de brilho apos 2 minutos e o desligamento manual por comando.
+
 Mudanças desta atualização dos fontes ESP32-C6 fornecidos. A versão exibida pelo comando `version` mantém o mecanismo automático já existente.
 
 ## Em desenvolvimento — 2026-10-08

@@ -532,7 +532,6 @@ void DisplayUtil::desenharMatrixScreensaver() {
         gfx->setCursor(x, y);
         gfx->print((char)random(33, 126)); 
     }
-    delay(10); 
 }
 
 void DisplayUtil::print(String text) {
@@ -587,9 +586,9 @@ void DisplayUtil::wake(){lastActivity_=millis();powerSleeping_=false;
 }
 void DisplayUtil::updatePower(){
  uint32_t idle=millis()-lastActivity_;
- uint8_t level=idle>=900000?0:idle>=120000?min(uint8_t(20),brightness_):brightness_;
+ uint8_t level=idle>=120000?min(uint8_t(20),brightness_):brightness_;
  if(backlightReady_)ledcWrite(TFT_BL,uint32_t(level)*255/100);else digitalWrite(TFT_BL,level?HIGH:LOW);
- powerSleeping_=idle>=900000;
+ powerSleeping_=false;
 }
 void DisplayUtil::showMonitorPage(){
  SharedSpi::Guard guard;if(!monitor_)return;const auto& m=*monitor_;if(!statusPageInitialized){gfx->fillScreen(0);statusPageInitialized=true;}gfx->fillRect(8,32,304,140,0);gfx->setTextSize(2);gfx->setTextColor(0x07FF);

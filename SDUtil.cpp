@@ -28,6 +28,7 @@ bool SDUtil::begin()
     SdSpiConfig configSD(SD_CS, SHARED_SPI | USER_SPI_BEGIN, SD_SCK_MHZ(2), &SPI);
     
     bool resultado = sdCard.begin(configSD);
+    mounted_ = resultado;
     if (!resultado)
     {
         Serial.println("[SD] Falha ao inicializar: SCLK=7 MISO=5 MOSI=6 CS=4");
@@ -312,6 +313,46 @@ uint64_t SDUtil::getUsedBytesCooperative()
         vTaskDelay(1);
     }
     return uint64_t(clusters - freeClusters) * sectorsPerCluster * 512ULL;
+}
+
+int SDUtil::readLogTail(const char* path, String& content, bool& truncated)
+{
+    SharedSpi::Guard spiGuard;
+    content = "";
+    truncated = false;
+    if (!mounted_) { content = "Cartao SD indisponivel."; return 503; }
+    if (!sdCard.exists(path)) { content = "Este log ainda nao foi criado."; return 404; }
+    FsFile file = sdCard.open(path, O_READ);
+    if (!file || file.isDir()) { content = "Nao foi possivel abrir o log."; return 500; }
+    const size_t limit = 8192;
+    uint64_t size = file.fileSize();
+    truncated = size > limit;
+    if (truncated && !file.seekSet(size - limit)) {
+        file.close(); content = "Falha ao posicionar a leitura do log."; return 500;
+    }
+    char buffer[256];
+    if (!content.reserve(limit)) {
+        file.close(); content = "Memoria insuficiente para consultar o log."; return 500;
+    }
+    size_t remaining = size < limit ? size_t(size) : limit;
+    while (remaining) {
+        size_t count = remaining < sizeof(buffer) ? remaining : sizeof(buffer);
+        int n = file.read(buffer, count);
+        if (n <= 0) {
+            file.close(); content = "Falha ao ler o log do cartao."; return 500;
+        }
+        if (!content.concat(buffer, size_t(n))) {
+            file.close(); content = "Memoria insuficiente para consultar o log."; return 500;
+        }
+        remaining -= size_t(n);
+    }
+    file.close();
+    // A janela pode iniciar no meio de uma linha; mostra somente linhas completas.
+    if (truncated) {
+        int newline = content.indexOf('\n');
+        if (newline >= 0) content.remove(0, newline + 1);
+    }
+    return 200;
 }
 
 String SDUtil::readTail(String path, size_t maxBytes)

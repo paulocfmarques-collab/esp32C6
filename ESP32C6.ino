@@ -96,6 +96,8 @@ void startSdRead()
 void loop() 
 {
   static bool showingDashboard = false;
+  static bool screensaverActive = false;
+  static uint32_t lastScreensaverFrame = 0;
   static uint32_t responseUntil = 0;
   static uint32_t lastClockUpdate = 0;
   static uint8_t currentPage = 0;
@@ -232,6 +234,7 @@ void loop()
     lastClockUpdate = 0;
   }
 
+  if (!showingDashboard) screensaverActive = false;
   if (showingDashboard)
   {
     // A consulta pode ter iniciado/terminado desde o inicio deste loop.
@@ -247,11 +250,24 @@ void loop()
       lastClockUpdate = 0;
     }
 
-    // Se estiver ocioso há mais de 60 segundos, roda a cascata Sci-Fi hacker
-    if (millis() - tempoUltimoComando > 900000) 
+    if (screensaverActive && (millis() - tempoUltimoComando <= 60000 || sdBusy)) {
+      screensaverActive = false;
+      display.clear();
+      lastClockUpdate = 0;
+    }
+    // A protecao continua animada enquanto o dispositivo estiver ocioso.
+    if (millis() - tempoUltimoComando > 60000 && !sdBusy)
     {
-      // Backlight is off after 15 minutes; avoid unnecessary SPI redraws.
-      lastClockUpdate = millis(); // Evita desenhar o relógio por cima
+      if (!screensaverActive) {
+        display.clear();
+        screensaverActive = true;
+        lastScreensaverFrame = millis() - 40;
+      }
+      if (millis() - lastScreensaverFrame >= 40) {
+        display.desenharMatrixScreensaver();
+        lastScreensaverFrame = millis();
+      }
+      lastClockUpdate = 0;
     } 
     // Caso contrário, renderiza o painel completo atualizado de 1 em 1 segundo
     else if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : 1000UL))

@@ -26,6 +26,39 @@ Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecid
 
 A API de PWM usada é a do core 3.x (`ledcAttach`/`ledcWrite` por GPIO). Configurações USB e tamanho de flash devem seguir a placa física.
 
+### Compilar e gravar pelo VS Code
+
+As tarefas funcionam ao abrir a pasta raiz `PC` ou a pasta `ESP32C6` no VS Code.
+Usam Arduino CLI do `PATH` ou o executavel incluido na Arduino IDE 2, sem migrar
+os fontes para ESP-IDF ou PlatformIO. As bibliotecas da pasta
+`Documentos\Arduino\libraries` tambem sao consideradas, inclusive quando
+Documentos esta redirecionado para o OneDrive.
+
+1. Pressione **Ctrl+Shift+B** para **ESP32C6: Compilar**. Confirme o FQBN
+   `esp32:esp32:esp32c6:CDCOnBoot=cdc`, usado na compilacao anterior deste projeto.
+   USB CDC fica habilitado; flash e particoes usam os padroes da placa.
+   Ajuste o FQBN se o hardware exigir outras opcoes.
+2. Conecte a placa por USB com um cabo de dados. Em **Terminal > Executar Tarefa**,
+   execute **ESP32C6: Listar portas** e identifique a porta `COM` da placa.
+   Enderecos IP listados sao portas de rede, nao portas USB.
+3. Feche monitores seriais que estejam usando a porta. Execute
+   **ESP32C6: Compilar e gravar USB**, confirme o FQBN e informe a porta real
+   (por exemplo, `COM5`). A tarefa recompila e so grava se a compilacao terminar
+   com sucesso. A gravacao substitui o firmware atual.
+4. Execute **ESP32C6: Monitor serial**, informe a mesma porta e envie `help`.
+   O monitor usa **115200 baud**. Encerre a tarefa antes de gravar novamente.
+
+Os resultados ficam em `.build` dentro de `ESP32C6`, ignorada pelo Git. O arquivo
+`ESP32C6.ino.bin` e o firmware da aplicacao; a tarefa USB usa tambem os demais
+arquivos gerados e os enderecos definidos pelo core, sem exigir offsets manuais.
+Se a placa nao entrar no modo de gravacao automaticamente, mantenha BOOT
+pressionado, pressione e solte RESET, solte BOOT e consulte novamente a porta.
+
+O script retorna erro se o CLI nao estiver disponivel, se a porta informada nao
+for `COM` ou se a compilacao/gravacao falhar. As tarefas nao instalam nem atualizam
+cores e bibliotecas automaticamente. Os requisitos continuam sendo os da secao
+Instalacao acima.
+
 ## Pinagem preservada
 
 | Recurso | GPIO |
@@ -70,7 +103,7 @@ A busca começa pelo último perfil conectado, quando conhecido, e percorre os c
 - Segure por 3 segundos e solte: reinicia.
 - Segure por 10 segundos e solte: limpa as redes salvas e reinicia. O firmware, os arquivos SD e o namespace `ntp_cfg` permanecem.
 
-As páginas voltam ao relógio após 30 segundos. O brilho padrão é 80%, cai para no máximo 20% após 2 minutos e apaga após 15 minutos sem botão/comando UDP. A rede continua funcionando. Botão ou comando acordam a iluminação no valor configurado; brilho zero requer `tela_on` ou `brilho:P`.
+As páginas voltam ao relógio após 30 segundos. Após 60 segundos sem botão ou comando serial/UDP, o protetor Matrix roda continuamente; a tela não desliga automaticamente. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
 
 As barrinhas usam o RSSI real: quatro acima de -60 dBm, três acima de -70, duas acima de -80 e uma acima de -90. Três/quatro são verdes, duas amarelas e uma vermelha. Não há animação artificial de sinal.
 
@@ -91,6 +124,10 @@ O clima usa **Open-Meteo**, coordenadas de **Porto Alegre** (`-30.03`, `-51.23`)
 Para mudar a cidade, altere latitude, longitude e fuso na URL de `ClimaManager.h`, junto com o nome exibido nas páginas/comandos. A conexão HTTPS mantém a configuração original sem validação de certificado.
 
 ## Console e OTA
+
+### Logs no navegador
+
+Abra **http://IP_DA_PLACA/logs** ou clique em **Logs do SD** no portal. No AP de configuracao, use **http://192.168.4.1/logs**. A pagina permite selecionar `/log.txt`, `/network_history.log` e `/network_history.previous.log`, atualizar manualmente ou a cada 5 segundos e acompanhar as ultimas linhas. Cada consulta exibe ate 8 KiB do final do arquivo, sem alterar os registros. Logs de rede usam segundos desde o boot. SD indisponivel, arquivo ausente e erros de leitura aparecem na pagina.
 
 Console UDP: **4210**, limite de entrada **255 bytes**. Consulte [COMANDOS.md](COMANDOS.md) para sintaxe, limites e exemplos. O `help` corresponde à lista atualizada.
 

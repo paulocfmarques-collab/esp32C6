@@ -14,6 +14,7 @@ extern SDUtil sd;
 extern RGBLed rgbLed;
 #include "NetworkMonitor.h"
 #include "PortalUi.h"
+#include "LogPortal.h"
 static String esc(const String& s){String o;for(size_t i=0;i<s.length();i++){char c=s[i];if(c=='&')o+="&amp;";else if(c=='<')o+="&lt;";else if(c=='>')o+="&gt;";else if(c=='\'')o+="&#39;";else if(c=='"')o+="&quot;";else o+=c;}return o;}
 static String statusBadge(bool ok, const char* yes, const char* no) {
  return String("<span class='badge ") + (ok ? "ok" : "warn") + "'>" + (ok ? yes : no) + "</span>";
@@ -147,6 +148,16 @@ public:
   carregarRedes(ssids,passwords,lastUsed);if(prefs.begin("wifi",true)){cursor=prefs.getUChar("next",0)%5;prefs.end();}WiFi.persistent(false);WiFi.setHostname("ESP32-C6-Gateway");WiFi.mode(WIFI_AP_STA);WiFi.setAutoReconnect(false);openAP();
   server.on("/",HTTP_GET,[this](){if(estaConectado())handleInfo();else handleConfig();});
   server.on("/info",HTTP_GET,[this](){handleInfo();});server.on("/wifi",HTTP_GET,[this](){handleConfig();});
+  server.on("/logs",HTTP_GET,[this](){server.sendHeader("Cache-Control","no-store");server.send(200,"text/html; charset=utf-8",logPortalPage());});
+  server.on("/api/logs",HTTP_GET,[this](){
+   server.sendHeader("Cache-Control","no-store");
+   String selection=server.arg("file");
+   const char* path=selection=="commands"?"/log.txt":selection=="network"?"/network_history.log":selection=="previous"?"/network_history.previous.log":nullptr;
+   if(!path){server.send(400,"text/plain; charset=utf-8","Selecione um dos arquivos de log disponiveis.");return;}
+   String content;bool truncated=false;int code=sd.readLogTail(path,content,truncated);
+   server.sendHeader("X-Log-Truncated",truncated?"1":"0");
+   server.send( code,"text/plain; charset=utf-8",content);
+  });
   server.on("/salvar",HTTP_POST,[this](){handleSalvar();});server.begin();iniciarUDP();display.setMonitor(&telemetry);
  }
  bool estaConectado()const{return WiFi.status()==WL_CONNECTED;}

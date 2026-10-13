@@ -4,6 +4,11 @@ Referência do `CommandProcessor.cpp` desta atualização. Envie um comando de t
 
 Também é possível enviar os mesmos comandos pela **porta serial USB a 115200 baud**. No Monitor Serial, selecione final de linha **Nova linha**, **Retorno de carro** ou **Ambos NL e CR**, digite `help` e envie. Cada linha executa um comando; as respostas aparecem no serial. Comandos recebidos pelo serial não enviam respostas ao último cliente UDP. Linhas acima de 255 bytes são descartadas inteiras, sem executar um comando truncado. Espaços em argumentos são preservados.
 
+No VS Code, use **Terminal > Executar Tarefa > ESP32C6: Monitor serial** e informe
+a porta USB `COM` da placa. A tarefa configura 115200 baud. Encerre o monitor antes
+de executar **ESP32C6: Compilar e gravar USB**. Consulte
+[LEIA-ME.md](LEIA-ME.md#compilar-e-gravar-pelo-vs-code) para compilacao e gravacao.
+
 Para visualizar a animação de leitura do SD, envie `tela:7`. O painel mostra um cartão com feixe de leitura, partículas em órbita e uma barra de atividade enquanto consulta os dados. Em FAT16/FAT32, a consulta do espaço usado libera o SPI entre setores para atualizar a tela. A duração depende do cartão; não há atraso artificial. Em outros formatos, a contagem nativa da SdFat pode pausar a animação enquanto mantém o SPI ocupado.
 
 Não há autenticação de comandos nesta versão. Use o console e o portal somente em uma rede confiável. Credenciais de `wifi_add` são ocultadas no log local, mas UDP não cifra a transmissão.
@@ -25,7 +30,7 @@ Não há autenticação de comandos nesta versão. Use o console e o portal some
 | `cpu` | Informações de CPU. |
 | `ram` | Memória RAM. |
 | `flash` | Informações de flash. |
-| `init` | Tenta inicializar novamente o SD. |
+| `init` | Alias de `reason`; mostra o motivo do último reset. |
 | `heap` | Memória disponível. |
 | `heap_min` | Menor quantidade de heap livre desde o boot. |
 | `chip_info` | Identificação do chip. |
@@ -146,7 +151,7 @@ As páginas de informações retornam ao relógio após 30 segundos. Respostas d
 
 ## Economia de iluminação
 
-Após 2 minutos sem botão/comando UDP, o backlight cai para no máximo 20%; após 15 minutos, apaga. Botão ou comando reiniciam esse período e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
+Após 60 segundos sem botão ou comando serial/UDP, o protetor Matrix roda continuamente, sem desligamento automático da tela. Após 2 minutos, o backlight cai para no máximo 20%. Botão ou comando encerram o protetor e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
 
 ## Arquivos do histórico
 

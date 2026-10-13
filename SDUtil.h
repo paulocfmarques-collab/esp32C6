@@ -26,11 +26,14 @@ public:
     String readJson(String path);
     uint64_t getFileSize(String path);
     String readTail(String path, size_t maxBytes);
+    // Retorna um status HTTP e limita a leitura para o portal de logs.
+    int readLogTail(const char* path, String& content, bool& truncated);
     bool removeDir(String path);
     bool renameFile(const String& from,const String& to);
 
 private:
     SdFat sdCard; // Nova instância estável gerenciada pela SdFat
+    bool mounted_ = false;
 
     // Pinos oficiais da placa Waveshare ESP32-C6-LCD-1.47
     const int SD_CS = 4;
