@@ -3,18 +3,19 @@
 
 #include <Arduino.h>
 
-class NTPUtil {
-private:
+class NTPUtil
+{
+  private:
     int32_t fusoHora = -3;
     bool dstAtivo = false;
 
     void aplicarConfiguracaoNTP();
 
-public:
+  public:
     bool initNTP();
     void getDateTime(String& dateTime, uint32_t timeoutMs = 0);
     String getDateTime(uint32_t timeoutMs = 0);
-    
+
     // Declaração explícita das funções exigidas pelo CommandProcessor
     bool isSincronizado();
     String getSomenteHora();

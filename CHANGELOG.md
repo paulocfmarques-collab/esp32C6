@@ -1,5 +1,61 @@
 # Changelog
 
+## Revisão — 2026-10-31
+
+- Adicionado `reset_counters` para zerar somente os contadores NVS de
+  inicialização e watchdog no namespace `telemetry`.
+- O comando preserva as configurações Prometheus; menu `help` e documentação
+  de comandos atualizados.
+
+## Revisão documental — 2026-10-18
+
+- Adicionado `name` à ajuda e ao guia de comandos para identificar o hostname
+  configurado no dispositivo.
+- Guia de comandos sincronizado com o protetor de robô e os arquivos
+  `/diagnostic.log` e `/diagnostic.previous.log`, disponíveis no portal.
+- Acrescentadas referências ao catálogo e ao
+  [histórico consolidado](../ESP32_Documents/changelog.md).
+- Nenhuma mudança de firmware ou nova validação física nesta revisão.
+
+## 2026-10-18
+
+- Corrigido vazamento no encerramento da tarefa de clima: objetos HTTP/HTTPS e Strings saem de escopo antes de `vTaskDelete()`, com encerramento explicito da conexao. Consulta SD tambem libera sua String antes de encerrar a tarefa. Diagnostico inclui `WEATHER_START`, `WEATHER_END` e etapas de montagem das metricas; falha na reserva de memoria retorna HTTP 503.
+- Brilho PWM atualizado apenas quando o nivel muda, com evento `BACKLIGHT` no diagnostico. Paineis atualizam texto com fundo opaco e grafico por coluna, removendo apagamentos grandes a cada atualizacao para reduzir piscadas.
+- Diagnostico persistente em `/diagnostic.log` e `/diagnostic.previous.log`, acessivel no portal: boot/reset, memoria, animacao, Wi-Fi, consultas de metricas e heartbeat. Escrita em tarefa separada com fila limitada e marcador RTC para consultas interrompidas por reset.
+- Carinha do protetor percorre a tela na horizontal e vertical, rebatendo nas bordas sem deixar rastros, mantendo as expressoes e piscadas.
+- Protetor Matrix substituido por robo vetorial com dez expressoes coloridas inspiradas na referencia, piscadas e movimento suave. Buffer de 176 x 136 pixels usado somente durante a protecao; desenho direto se faltar memoria. Mantidos o inicio apos 60 segundos e o retorno por botao/comando.
+
+## 2026-10-16
+
+- Corrigido o crash na partida em `SDUtil::processMetrics()`: o servico de metricas passa a ser inicializado uma unica vez em `ESP32Gateway::begin()`, em vez da rotina de busca Wi-Fi. Processamento antes da inicializacao e chamadas repetidas de `begin()` ficam protegidos.
+
+## 2026-10-16
+
+- Servico Prometheus orientado a objeto `MetricsService`, com `/metrics` na porta
+  configurada (padrao 9120), mantendo portal, logs e configuracao na porta 80.
+- Formulario `/prometheus` e download `/prometheus.yml`; endereco do servidor,
+  porta de metricas e intervalo sugerido persistidos em `telemetry`, com
+  validacao HTTP 400 e erro de gravacao HTTP 503.
+- Metricas reais de identificacao, disponibilidade, Wi-Fi, CPU, tarefas,
+  memoria, flash, BOOT, backlight e HTTP; contadores persistentes de
+  inicializacoes e resets por watchdog.
+- Temperatura interna da CPU e idade dos dados atuais de clima, com timer
+  monotono de 64 bits; dados meteorologicos nao sao sensores locais.
+- Cache SD consultado por tarefa a cada 30 segundos, sem acesso SPI por
+  scrape; capacidade, ocupacao, disponibilidade, clock, idade, tamanhos de
+  logs e contadores atomicos de append. Falhas invalidam a amostra em vez de
+  simular espaco ocupado igual a zero.
+- Varredura SD cooperativa cancelada quando muda a montagem; append confirma
+  sincronizacao antes de declarar sucesso e informa falhas na Serial.
+- Markdown atualizado e catalogo em `PROMETHEUS.md`, incluindo as 17 series
+  sem integracao real e roteiro de validacao na placa.
+- Verificacao sintatica focalizada com compilador RISC-V do core 3.3.12.
+  Compilacao/link completos, tamanho final e testes na placa ficam pendentes.
+
+## 2026-10-14
+
+- Comando `crash_info` por serial/UDP, seguindo o Central: leitura explicita do core dump ELF, relatorio unico no SD, conferencia por releitura e apagamento interno somente apos arquivamento confirmado. Relatorio adaptado aos registradores e pilha RISC-V do ESP32-C6.
+
 ## 2026-10-12
 
 - Inventário geral de comandos atualizado para refletir o `help` do firmware,

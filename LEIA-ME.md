@@ -17,6 +17,23 @@ Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecid
 
 ## Instalação
 
+### Prometheus
+
+O portal agora inclui **Prometheus**, em `/prometheus`, sempre na **porta 80**.
+Endereco do servidor, porta de metricas do ESP32 (padrao **9120**) e intervalo
+sugerido ficam salvos em Preferences/NVS `telemetry`. O Prometheus coleta
+`/metrics` na porta configurada; nao ha envio ativo. Baixe o YAML da pagina
+e aplique no servidor. A porta muda sem reboot e e restaurada apos reiniciar.
+
+Sao exportadas metricas reais de sistema, Wi-Fi, CPU, memoria, GPIO, HTTP,
+temperatura interna, idade do clima e SD. O cache SD e atualizado em tarefa
+a cada 30 segundos, preservando o SPI compartilhado; nao ha leitura do cartao
+por scrape. Energia, bateria, sensores ambientais locais, reles, ADC e MQTT
+continuam sem integracao e nao geram zeros ficticios.
+Catalogo, limites e verificacao: [PROMETHEUS.md](PROMETHEUS.md).
+
+### Preparacao da placa
+
 1. Extraia o pacote e mantenha todos os fontes juntos na pasta `ESP32C6`.
 2. Abra `ESP32C6.ino` na Arduino IDE.
 3. Instale o pacote **esp32 by Espressif Systems 3.x**, com suporte ao ESP32-C6.
@@ -103,7 +120,7 @@ A busca começa pelo último perfil conectado, quando conhecido, e percorre os c
 - Segure por 3 segundos e solte: reinicia.
 - Segure por 10 segundos e solte: limpa as redes salvas e reinicia. O firmware, os arquivos SD e o namespace `ntp_cfg` permanecem.
 
-As páginas voltam ao relógio após 30 segundos. Após 60 segundos sem botão ou comando serial/UDP, o protetor Matrix roda continuamente; a tela não desliga automaticamente. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
+As páginas voltam ao relógio após 30 segundos. Após 60 segundos sem botão ou comando serial/UDP, a proteção mostra um robô com dez expressões coloridas, piscadas e movimento suave; a tela não desliga automaticamente. As expressões mudam a cada 4,2 segundos. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
 
 As barrinhas usam o RSSI real: quatro acima de -60 dBm, três acima de -70, duas acima de -80 e uma acima de -90. Três/quatro são verdes, duas amarelas e uma vermelha. Não há animação artificial de sinal.
 
@@ -126,6 +143,10 @@ Para mudar a cidade, altere latitude, longitude e fuso na URL de `ClimaManager.h
 ## Console e OTA
 
 ### Logs no navegador
+
+O diagnostico automatico fica em `/diagnostic.log`, com rotacao para `/diagnostic.previous.log` a partir de 256 KiB. Selecione **Diagnostico** ou **Diagnostico anterior** em `/logs`. Registra `BOOT` (motivo do reset e versao), `SETUP_READY`, `HEARTBEAT` a cada minuto, desconexoes Wi-Fi com codigo de motivo, inicio/fim do robo e `METRICS_START` / `METRICS_END` com numero da consulta, tamanho gerado, duracao e estado do cliente. Cada linha inclui uptime, memoria livre, minimo de memoria e maior bloco disponivel. A gravacao e sincronizada por uma tarefa separada com fila limitada; descartes e falhas de escrita aparecem no heartbeat quando o cartao volta a responder.
+
+Um marcador em memoria RTC permite registrar `METRICS_INTERRUPTED` no boot seguinte se houve reset com consulta pendente. Isso nao garante recuperacao apos perda de alimentacao. `METRICS_END` significa que a chamada de envio retornou, e nao confirma o recebimento completo pelo Prometheus. Para investigar um `unexpected EOF`, consulte o diagnostico atual e o anterior, procurando reinicios, quedas de Wi-Fi, consultas sem fim e memoria baixa. O comando `crash_info` continua disponivel para arquivar um core dump de panic. O registro nao grava diretamente no SD dentro de um panic.
 
 Abra **http://IP_DA_PLACA/logs** ou clique em **Logs do SD** no portal. No AP de configuracao, use **http://192.168.4.1/logs**. A pagina permite selecionar `/log.txt`, `/network_history.log` e `/network_history.previous.log`, atualizar manualmente ou a cada 5 segundos e acompanhar as ultimas linhas. Cada consulta exibe ate 8 KiB do final do arquivo, sem alterar os registros. Logs de rede usam segundos desde o boot. SD indisponivel, arquivo ausente e erros de leitura aparecem na pagina.
 

@@ -1,12 +1,13 @@
 #pragma once
 #include "PortalUi.h"
 
-static String logPortalPage() {
+static String logPortalPage()
+{
     String h = portalStart("Logs do SD", false, false, true);
     h += F(R"LOGPAGE(
 <style>.log-controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.log-controls select{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--border);padding:10px;border-radius:9px;max-width:100%}.log-view{height:55vh;min-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.65 ui-monospace,Consolas,monospace;background:#080f1b;padding:18px;border-radius:10px;border:1px solid var(--border)}.nav{flex-wrap:wrap}</style>
 <div class='top'><div><div class='eyebrow'>Cartão SD</div><h1>Logs do dispositivo</h1><p class='muted'>Acompanhe os registros de comandos e conexão.</p></div><button id='refresh' type='button'>Atualizar agora</button></div>
-<section class='card'><div class='log-controls'><label for='log-file'>Arquivo</label><select id='log-file'><option value='commands'>Comandos — log.txt</option><option value='network'>Rede — network_history.log</option><option value='previous'>Rede anterior — network_history.previous.log</option></select><label class='check'><input id='auto' type='checkbox' checked>Atualizar a cada 5 segundos</label><label class='check'><input id='follow' type='checkbox' checked>Acompanhar últimas linhas</label></div>
+<section class='card'><div class='log-controls'><label for='log-file'>Arquivo</label><select id='log-file'><option value='commands'>Comandos — log.txt</option><option value='network'>Rede — network_history.log</option><option value='previous'>Rede anterior — network_history.previous.log</option><option value='diagnostic'>Diagnóstico — diagnostic.log</option><option value='diagnostic_previous'>Diagnóstico anterior — diagnostic.previous.log</option></select><label class='check'><input id='auto' type='checkbox' checked>Atualizar a cada 5 segundos</label><label class='check'><input id='follow' type='checkbox' checked>Acompanhar últimas linhas</label></div>
 <p id='log-status' class='hint' role='status' aria-live='polite'>Carregando registros…</p><pre id='log-content' class='log-view' tabindex='0' aria-label='Conteúdo do log'></pre><p class='hint'>Exibe os registros mais recentes, até 8 KiB por consulta. Horários de rede indicam segundos desde a inicialização.</p></section>
 <script>
 const file=document.getElementById('log-file'), output=document.getElementById('log-content'), status=document.getElementById('log-status'), refresh=document.getElementById('refresh'), auto=document.getElementById('auto'), follow=document.getElementById('follow');

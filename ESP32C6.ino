@@ -8,6 +8,7 @@
 #include "ClimaManager.h"
 #include <WiFi.h>
 #include "SerialConsole.h"
+#include "Diagnostics.h"
 
 constexpr uint8_t USER_BUTTON_PIN = 9; // Botao BOOT onboard da Waveshare ESP32-C6-LCD-1.47
 
@@ -35,6 +36,7 @@ void setup()
   SharedSpi::begin();
   // Coloca o cartao em modo SPI antes de enviar comandos ao LCD.
   sdDisponivel = commandProcessor.begin();
+  Diagnostics::begin(sd);
   display.begin();
   display.setRotation(1); 
   display.clear();
@@ -48,6 +50,7 @@ void setup()
   ntp.initNTP();
   tempoUltimoComando = millis();
   Serial.println("[Serial] Console pronto: 115200 baud, termine com Enter. Digite help.");
+  Diagnostics::event("SETUP_READY");
 }
 
 
@@ -64,6 +67,7 @@ bool sdLoadingShown = false;
 
 void sdInfoTask(void*)
 {
+  { // Libera a String local antes de encerrar a tarefa FreeRTOS.
   SdInfoCache next;
   String type = sd.getCardType();
   strncpy(next.type, type.c_str(), sizeof(next.type) - 1);
@@ -73,6 +77,7 @@ void sdInfoTask(void*)
   portENTER_CRITICAL(&sdCacheMux);
   sdInfo = next; sdReading = false;
   portEXIT_CRITICAL(&sdCacheMux);
+  }
   vTaskDelete(NULL);
 }
 
@@ -113,6 +118,7 @@ void loop()
   SdInfoCache sdSnapshot; bool sdBusy;
   portENTER_CRITICAL(&sdCacheMux); sdSnapshot=sdInfo; sdBusy=sdReading; portEXIT_CRITICAL(&sdCacheMux);
   display.updatePower();
+  Diagnostics::process();
   gateway.handleClient();
   commandProcessor.update();  
 
@@ -264,7 +270,7 @@ void loop()
         lastScreensaverFrame = millis() - 40;
       }
       if (millis() - lastScreensaverFrame >= 40) {
-        display.desenharMatrixScreensaver();
+        display.desenharRobotScreensaver();
         lastScreensaverFrame = millis();
       }
       lastClockUpdate = 0;

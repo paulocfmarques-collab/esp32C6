@@ -1,5 +1,8 @@
 # Comandos — ESP32-C6 Gateway
 
+Revisão documental: **31/10/2026**. Histórico:
+[CHANGELOG.md](CHANGELOG.md); [catálogo geral](../ESP32_Documents/COMANDOS.md).
+
 Referência do `CommandProcessor.cpp` desta atualização. Envie um comando de texto por datagrama UDP para a **porta 4210** do dispositivo. No AP de configuração, use `192.168.4.1`. O limite de entrada é **255 bytes** por comando, incluindo argumentos. Nomes de comando aceitam maiúsculas/minúsculas; SSID, senha e texto mantêm a capitalização.
 
 Também é possível enviar os mesmos comandos pela **porta serial USB a 115200 baud**. No Monitor Serial, selecione final de linha **Nova linha**, **Retorno de carro** ou **Ambos NL e CR**, digite `help` e envie. Cada linha executa um comando; as respostas aparecem no serial. Comandos recebidos pelo serial não enviam respostas ao último cliente UDP. Linhas acima de 255 bytes são descartadas inteiras, sem executar um comando truncado. Espaços em argumentos são preservados.
@@ -15,17 +18,35 @@ Não há autenticação de comandos nesta versão. Use o console e o portal some
 
 ## Sistema
 
+### Prometheus pela web
+
+Nao foram criados comandos serial/UDP para Prometheus. Use `/prometheus` no
+painel da **porta 80** para salvar endereco do servidor, porta de metricas
+(padrao **9120**) e intervalo nas Preferences `telemetry`. O servidor coleta
+`/metrics` na porta salva; aplique no Prometheus o YAML baixado da pagina.
+`reset_wifi` e a limpeza por BOOT preservam essas preferencias.
+
+Os contadores `application_*` medem requisicoes HTTP, nao comandos deste
+console. `temp`, `sd_status` e `sd_log` ajudam a comparar as leituras;
+o cache SD pode estar ate uma consulta atrasado. Se o SD nao iniciou, um
+comando SD tenta monta-lo novamente; isso invalida o cache ate uma nova
+consulta, sem reaproveitar dados de uma montagem anterior.
+Veja [PROMETHEUS.md](PROMETHEUS.md) para todas as metricas e limitacoes.
+
 | Comando | Função |
 | --- | --- |
 | `help` | Lista todos os comandos. |
+| `name` | Retorna o nome configurado no dispositivo. |
 | `info` | Resumo de identificação, rede, memória, data e hora. |
 | `status` | Estado dos serviços. |
 | `uptime` | Tempo desde a inicialização. |
 | `reason` | Motivo do último reset. |
+| `crash_info` | Mostra o ultimo reset e consulta o core dump. Salva e confere um relatorio `/crash_AAAAMMDD_HHMMSS.txt` no SD antes de apagar o registro interno; sem hora, usa `/crash_SEM_NTP_<millis>.txt`. Em caso de falha no SD, preserva o registro interno. Requer core dump ELF em flash habilitado no core/SDK e particao de core dump. Caso contrario, informa que o recurso nao esta habilitado. No C6, mostra registradores e pilha RISC-V para decodificacao com o ELF correspondente. |
 | `version` | Versão gerada pelo firmware. |
 | `build` | Data e hora da compilação. |
 | `alive` | Confirma que o dispositivo responde. |
 | `reboot` | Reinicia o processador. |
+| `reset_counters` | Zera somente os contadores NVS persistentes de boot/watchdog no namespace `telemetry`; preserva as configurações Prometheus. |
 | `temp` | Temperatura interna do chip; não representa temperatura ambiente. |
 | `cpu` | Informações de CPU. |
 | `ram` | Memória RAM. |
@@ -151,12 +172,19 @@ As páginas de informações retornam ao relógio após 30 segundos. Respostas d
 
 ## Economia de iluminação
 
-Após 60 segundos sem botão ou comando serial/UDP, o protetor Matrix roda continuamente, sem desligamento automático da tela. Após 2 minutos, o backlight cai para no máximo 20%. Botão ou comando encerram o protetor e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
+Após 60 segundos sem botão ou comando serial/UDP, o protetor de robô roda continuamente, alternando dez expressões coloridas a cada 4,2 segundos, com piscadas e movimento suave. A tela não desliga automaticamente. Após 2 minutos, o backlight cai para no máximo 20%. Botão ou comando encerram o protetor e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
 
 ## Arquivos do histórico
 
 - `/log.txt`: respostas de comandos que habilitam log.
 - `/network_history.log`: boot, mudanças de conexão e amostras de ping; horário em segundos desde o boot.
 - `/network_history.previous.log`: arquivo anterior, após rotação em aproximadamente 64 KiB.
+- `/diagnostic.log` e `/diagnostic.previous.log`: diagnóstico persistente de
+  inicialização, memória, animação, Wi-Fi, métricas e heartbeat. Consulte a
+  categoria Diagnóstico na página de logs; não há comando `diagnostic` novo.
 
 `net_history` pode começar no meio de uma linha por retornar somente a cauda do arquivo. Eventos e estatísticas em RAM reiniciam no boot; os arquivos permanecem no cartão.
+
+Escrita e exclusão no SD não pedem confirmação. `crash_info` pode apagar o
+dump interno após verificar a cópia; preserve o ELF correspondente. Esta
+revisão de documentação não compila nem grava a placa.

@@ -1,5 +1,15 @@
 # Teste isolado do SD
 
+## Relacao com o monitoramento Prometheus
+
+Este sketch continua **isolado**, sem portal ou Prometheus. O firmware
+principal possui `/prometheus` na porta 80 e `/metrics` na porta configurada
+e salva (padrao 9120). As metricas do SD usam montagem e sistema de arquivos
+da SdFat; uma resposta CMD0 deste teste nao garante que essas metricas
+estejam disponiveis. Gravar este diagnostico substitui o firmware principal:
+nao espere atendimento HTTP durante o teste. Depois, grave novamente o
+firmware principal e siga [PROMETHEUS.md](../../PROMETHEUS.md).
+
 Abra `SD_SPI_Diagnostico.ino` como um sketch separado na Arduino IDE, selecione a mesma placa e configuracoes USB do firmware e grave por USB. Abra o monitor serial em 115200 e reinicie a placa. Este sketch substitui temporariamente o firmware; grave `ESP32C6.ino` novamente depois do teste.
 
 Nao usa SdFat, display, Wi-Fi ou sistema de arquivos. Envia somente clocks de partida e CMD0 a 100 kHz, sem gravar ou formatar o cartao.

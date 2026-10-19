@@ -2,6 +2,9 @@
 #include "DisplayUtil.h"
 #include "ClimaManager.h"
 #include <WiFi.h>
+#include "RobotScreensaver.h"
+#include "Diagnostics.h"
+#include <new>
 
 #define TFT_BL 22
 
@@ -46,6 +49,14 @@ void DisplayUtil::clear() {
     ultimaHora = "";
     ultimaData = "";
     statusPageInitialized = false;
+    robotStartedAt_ = millis();
+    robotPreviousX_ = robotPreviousY_ = -1;
+    const bool wasRobotActive = robotCanvasAttempted_;
+    // O buffer so ocupa RAM enquanto a protecao estiver em uso.
+    delete robotCanvas_;
+    robotCanvas_ = nullptr;
+    robotCanvasAttempted_ = false;
+    if (wasRobotActive) Diagnostics::event("ROBOT_END", "buffer_released=1");
     gfx->fillScreen(backgroundColor);
 }
 
@@ -286,12 +297,7 @@ void DisplayUtil::showStatusPage(bool sdReady, bool ntpSynchronized, const Strin
     gfx->setTextSize(2);
     for (uint8_t i = 0; i < 5; i++) {
         int y = 44 + (i * 24);
-        gfx->fillRect(16, y, gfx->width() - 32, 20, backgroundColor);
-        gfx->setTextColor(colors[i]);
-        gfx->setCursor(20, y + 2);
-        String l = lines[i];
-        if (l.length() > 24) l = l.substring(0, 24);
-        gfx->print(l);
+        drawPanelLine(20, y + 2, 2, 24, lines[i], colors[i]);
     }
 }
 
@@ -328,13 +334,8 @@ void DisplayUtil::showNetworkPage(uint8_t part) {
     gfx->setTextSize(2);
     for (uint8_t i = 0; i < 5; i++) {
         int y = 44 + (i * 22);
-        gfx->fillRect(16, y, gfx->width() - 32, 18, backgroundColor);
-        gfx->setTextColor(part == 0 && i == 0 ? (connected ? COLOR_GREEN : 0xF800) : COLOR_WHITE);
-        gfx->setCursor(20, y + 1);
-        if (lines[i].length() > 24) {
-            lines[i] = lines[i].substring(0, 24);
-        }
-        gfx->print(lines[i]);
+        drawPanelLine(20, y + 1, 2, 24, lines[i],
+            part == 0 && i == 0 ? (connected ? COLOR_GREEN : 0xF800) : COLOR_WHITE);
     }
 }
 
@@ -367,10 +368,7 @@ void DisplayUtil::showSystemPage() {
     gfx->setTextSize(2);
     for (uint8_t i = 0; i < 5; i++) {
         int y = 44 + (i * 22);
-        gfx->fillRect(16, y, gfx->width() - 32, 18, backgroundColor);
-        gfx->setTextColor(i == 1 && temp > 70.0f ? 0xF800 : COLOR_WHITE);
-        gfx->setCursor(20, y + 1);
-        gfx->print(lines[i]);
+        drawPanelLine(20, y + 1, 2, 24, lines[i], i == 1 && temp > 70.0f ? 0xF800 : COLOR_WHITE);
     }
 }
 void DisplayUtil::showSavedWifiPage(const String ssids[5], int connectedSlot, uint8_t nextSlot) {
@@ -390,15 +388,11 @@ void DisplayUtil::showSavedWifiPage(const String ssids[5], int connectedSlot, ui
     gfx->setTextSize(2);
     for (uint8_t i = 0; i < 5; i++) {
         int y = 44 + (i * 21);
-        gfx->fillRect(16, y, gfx->width() - 32, 19, backgroundColor);
         bool vazio = ssids[i].length() == 0;
         bool conectada = static_cast<int>(i) == connectedSlot;
-        gfx->setTextColor(conectada ? COLOR_GREEN : vazio ? COLOR_GRAY : COLOR_WHITE);
-        gfx->setCursor(20, y + 2);
         String linha = String(i + 1) + (conectada ? "*" : (i == nextSlot ? ">" : " ")) +
                        (vazio ? String("(vazio)") : ssids[i]);
-        if (linha.length() > 24) linha = linha.substring(0, 24);
-        gfx->print(linha);
+        drawPanelLine(20, y + 2, 2, 24, linha, conectada ? COLOR_GREEN : vazio ? COLOR_GRAY : COLOR_WHITE);
     }
     gfx->setTextSize(1);
     gfx->setTextColor(COLOR_GRAY);
@@ -507,31 +501,58 @@ void DisplayUtil::showSdPage(bool sdReady, const String& cardType,
     gfx->setTextSize(2);
     for (uint8_t i = 0; i < 5; i++) {
         int y = 44 + (i * 24);
-        gfx->fillRect(16, y, gfx->width() - 32, 20, backgroundColor);
-        gfx->setTextColor(i == 0 && sdReady ? COLOR_GREEN :
-                          i == 0 ? 0xF800 : COLOR_WHITE);
-        gfx->setCursor(20, y + 2);
-        String l = lines[i];
-        if (l.length() > 24) l = l.substring(0, 24);
-        gfx->print(l);
+        drawPanelLine(20, y + 2, 2, 24, lines[i],
+            i == 0 && sdReady ? COLOR_GREEN : i == 0 ? 0xF800 : COLOR_WHITE);
     }
 }
 
-void DisplayUtil::desenharMatrixScreensaver() {
+void DisplayUtil::desenharRobotScreensaver() {
     SharedSpi::Guard spiGuard;
-    int colunas = gfx->width() / 12;
-    for (int i = 0; i < 3; i++) { 
-        int x = random(0, colunas) * 12;
-        int y = random(0, gfx->height() / 16) * 16;
-        
-        gfx->fillRect(x, y, 10, 14, backgroundColor); 
-        
-        uint16_t tomVerde = (random(0, 10) > 3) ? COLOR_GREEN : 0x0400;
-        gfx->setTextColor(tomVerde);
-        gfx->setTextSize(1);
-        gfx->setCursor(x, y);
-        gfx->print((char)random(33, 126)); 
+    const uint32_t elapsed = millis() - robotStartedAt_;
+    // Trajetoria independente da taxa de quadros, com reflexao nas bordas.
+    auto bounce = [elapsed](int span, uint32_t speed) -> int {
+        if (span <= 0) return 0;
+        const uint32_t phase = (uint64_t(elapsed) * speed / 1000 + span / 2) % (2 * span);
+        return phase <= uint32_t(span) ? int(phase) : 2 * span - int(phase);
+    };
+    const int x = bounce(gfx->width() - 176, 25);
+    const int y = bounce(gfx->height() - 136, 13);
+    if (robotPreviousX_ >= 0) {
+        // Apaga apenas as faixas deixadas para tras, sem piscar a tela inteira.
+        auto erase = [&](int left, int top, int width, int height) {
+            if (width > 0 && height > 0) gfx->fillRect(left, top, width, height, backgroundColor);
+        };
+        const int oldX = robotPreviousX_, oldY = robotPreviousY_;
+        erase(oldX, oldY, 176, min(y, oldY + 136) - oldY);
+        const int bottom = max(y + 136, oldY);
+        erase(oldX, bottom, 176, oldY + 136 - bottom);
+        const int top = max(y, oldY), height = min(y + 136, oldY + 136) - top;
+        erase(oldX, top, min(x, oldX + 176) - oldX, height);
+        const int right = max(x + 176, oldX);
+        erase(right, top, oldX + 176 - right, height);
     }
+    if (!robotCanvasAttempted_) {
+        robotCanvasAttempted_ = true;
+        Diagnostics::event("ROBOT_START", "buffer_requested_bytes=47872");
+        robotCanvas_ = new (std::nothrow) Arduino_Canvas(176, 136, gfx, x, y);
+        // A tela e o SPI ja estao inicializados; nao reinicializar o hardware.
+        if (robotCanvas_ && !robotCanvas_->begin(GFX_SKIP_OUTPUT_BEGIN)) {
+            delete robotCanvas_;
+            robotCanvas_ = nullptr;
+        }
+        if (!robotCanvas_) Serial.println("[Tela] Robo sem buffer: usando desenho direto.");
+        Diagnostics::event(robotCanvas_ ? "ROBOT_BUFFER_OK" : "ROBOT_BUFFER_FAILED");
+    }
+    if (robotCanvas_) {
+        robotCanvas_->fillScreen(backgroundColor);
+        RobotScreensaver::draw(*robotCanvas_, elapsed);
+        gfx->draw16bitRGBBitmap(x, y, robotCanvas_->getFramebuffer(), 176, 136);
+    } else {
+        gfx->fillRect(x, y, 176, 136, backgroundColor);
+        RobotScreensaver::draw(*gfx, elapsed, x, y);
+    }
+    robotPreviousX_ = x;
+    robotPreviousY_ = y;
 }
 
 void DisplayUtil::print(String text) {
@@ -579,33 +600,64 @@ Arduino_ST7789* DisplayUtil::getDisplay() {
 
 void DisplayUtil::setBacklight(uint8_t percent){
  brightness_=min(uint8_t(100),percent);powerSleeping_=false;lastActivity_=millis();
- if(backlightReady_)ledcWrite(TFT_BL,uint32_t(brightness_)*255/100);else digitalWrite(TFT_BL,brightness_?HIGH:LOW);
+ applyBacklight(brightness_);
 }
 void DisplayUtil::wake(){lastActivity_=millis();powerSleeping_=false;
- if(backlightReady_)ledcWrite(TFT_BL,uint32_t(brightness_)*255/100);else digitalWrite(TFT_BL,brightness_?HIGH:LOW);
+ applyBacklight(brightness_);
 }
 void DisplayUtil::updatePower(){
  uint32_t idle=millis()-lastActivity_;
  uint8_t level=idle>=120000?min(uint8_t(20),brightness_):brightness_;
- if(backlightReady_)ledcWrite(TFT_BL,uint32_t(level)*255/100);else digitalWrite(TFT_BL,level?HIGH:LOW);
+ applyBacklight(level);
  powerSleeping_=false;
 }
+void DisplayUtil::applyBacklight(uint8_t level) {
+    // Reaplicar o mesmo duty continuamente perturba desnecessariamente o PWM.
+    if (appliedBrightness_ == level) return;
+    appliedBrightness_ = level;
+    bool ok = true;
+    if (backlightReady_) ok = ledcWrite(TFT_BL, uint32_t(level) * 255 / 100);
+    else digitalWrite(TFT_BL, level ? HIGH : LOW);
+    char detail[80];
+    snprintf(detail, sizeof(detail), "level=%u pwm=%u write_ok=%u", unsigned(level),
+             unsigned(backlightReady_), unsigned(ok));
+    Diagnostics::event("BACKLIGHT", detail);
+}
+
+void DisplayUtil::drawPanelLine(int x, int y, uint8_t size, uint8_t columns,
+                                 const String& text, uint16_t color) {
+    // Texto opaco substitui os caracteres antigos sem apagar a linha inteira.
+    String line = text.substring(0, columns);
+    while (line.length() < columns) line += ' ';
+    gfx->setTextSize(size);
+    gfx->setTextColor(color, backgroundColor);
+    gfx->setCursor(x, y);
+    gfx->print(line);
+}
 void DisplayUtil::showMonitorPage(){
- SharedSpi::Guard guard;if(!monitor_)return;const auto& m=*monitor_;if(!statusPageInitialized){gfx->fillScreen(0);statusPageInitialized=true;}gfx->fillRect(8,32,304,140,0);gfx->setTextSize(2);gfx->setTextColor(0x07FF);
- gfx->setCursor(8,6);gfx->print("MONITOR DE REDE");gfx->setTextColor(0xFFFF);
- gfx->setCursor(8,34);gfx->print(!m.connected?String("WiFi desconectado"):!m.hasResult?String("Ping aguardando"):m.replied?"Gateway: "+String(m.rtt)+" ms":String("Gateway: timeout"));
- gfx->setCursor(8,58);gfx->printf("Quedas:%lu Offline:%lus",(unsigned long)m.drops,(unsigned long)m.offlineSeconds());
- gfx->setCursor(8,82);gfx->printf("Sem resposta: %lu/%lu",(unsigned long)m.failures,(unsigned long)m.attempts);
+ SharedSpi::Guard guard;if(!monitor_)return;const auto& m=*monitor_;
+ if(!statusPageInitialized){gfx->fillScreen(backgroundColor);drawPanelLine(8,6,2,25,"MONITOR DE REDE",COLOR_CYAN);statusPageInitialized=true;}
+ drawPanelLine(8,34,2,25,!m.connected?String("WiFi desconectado"):!m.hasResult?String("Ping aguardando"):m.replied?"Gateway: "+String(m.rtt)+" ms":String("Gateway: timeout"),COLOR_WHITE);
+ char line[80];
+ snprintf(line,sizeof(line),"Quedas:%lu Offline:%lus",(unsigned long)m.drops,(unsigned long)m.offlineSeconds());
+ drawPanelLine(8,58,2,25,line,COLOR_WHITE);
+ snprintf(line,sizeof(line),"Sem resposta: %lu/%lu",(unsigned long)m.failures,(unsigned long)m.attempts);
+ drawPanelLine(8,82,2,25,line,COLOR_WHITE);
  int peak=10;for(int value:m.history)if(value>peak)peak=value;
- for(int i=0;i<24;i++){int value=m.history[(m.head+i)%24],x=8+i*12;if(value==-1)gfx->drawFastVLine(x,116,34,0xF800);else if(value>=0){int h=max(1,value*34/peak);gfx->drawFastVLine(x,150-h,h,0x07E0);}}
- gfx->setTextSize(1);gfx->setCursor(8,158);gfx->print("Verde: RTT / vermelho: sem resposta");
+ for(int i=0;i<24;i++){int value=m.history[(m.head+i)%24],x=8+i*12;if(value==-1)gfx->drawFastVLine(x,116,34,0xF800);else if(value>=0){int h=max(1,value*34/peak);gfx->drawFastVLine(x,150-h,h,0x07E0);gfx->drawFastVLine(x,116,34-h,backgroundColor);}else gfx->drawFastVLine(x,116,34,backgroundColor);}
+ drawPanelLine(8,158,1,50,"Verde: RTT / vermelho: sem resposta",COLOR_GRAY);
 }
 void DisplayUtil::showForecastPage(){
- SharedSpi::Guard guard;auto c=ClimaManager::snapshot();if(!statusPageInitialized){gfx->fillScreen(0);statusPageInitialized=true;}gfx->fillRect(8,32,304,140,0);gfx->setTextSize(2);gfx->setTextColor(0x07FF);gfx->setCursor(8,6);gfx->print("PREVISAO DO TEMPO");
- if(!c.previsaoValida){gfx->setCursor(8,45);gfx->print("Aguardando dados...");return;}
- gfx->setTextColor(0xFFFF);gfx->setCursor(8,32);gfx->print(c.data);
- gfx->setCursor(8,58);gfx->printf("Min: %.1f C  Max: %.1f C",c.minima,c.maxima);
- gfx->setTextColor(0x07E0);gfx->setCursor(8,86);gfx->printf("Chance de chuva: %d%%",c.chuva);
- gfx->setTextColor(0xFFFF);gfx->setCursor(8,112);gfx->printf("Dados de ha %lu min",(unsigned long)((millis()-c.previsaoAtualizada)/60000));
- gfx->setTextSize(1);gfx->setCursor(8,146);gfx->print(c.ultimaFalhou?"Falha na atualizacao: dados anteriores":"Probabilidade maxima de precipitacao do dia");
+ SharedSpi::Guard guard;auto c=ClimaManager::snapshot();
+ if(!statusPageInitialized){gfx->fillScreen(backgroundColor);drawPanelLine(8,6,2,25,"PREVISAO DO TEMPO",COLOR_CYAN);statusPageInitialized=true;}
+ if(!c.previsaoValida){drawPanelLine(8,32,2,25,"Aguardando dados...",COLOR_WHITE);drawPanelLine(8,58,2,25,"",COLOR_WHITE);drawPanelLine(8,86,2,25,"",COLOR_WHITE);drawPanelLine(8,112,2,25,"",COLOR_WHITE);drawPanelLine(8,146,1,50,"",COLOR_GRAY);return;}
+ drawPanelLine(8,32,2,25,c.data,COLOR_WHITE);
+ char line[80];
+ snprintf(line,sizeof(line),"Min: %.1f C  Max: %.1f C",c.minima,c.maxima);
+ drawPanelLine(8,58,2,25,line,COLOR_WHITE);
+ snprintf(line,sizeof(line),"Chance de chuva: %d%%",c.chuva);
+ drawPanelLine(8,86,2,25,line,COLOR_GREEN);
+ snprintf(line,sizeof(line),"Dados de ha %lu min",(unsigned long)((millis()-c.previsaoAtualizada)/60000));
+ drawPanelLine(8,112,2,25,line,COLOR_WHITE);
+ drawPanelLine(8,146,1,50,c.ultimaFalhou?"Falha na atualizacao: dados anteriores":"Probabilidade maxima de precipitacao do dia",COLOR_GRAY);
 }

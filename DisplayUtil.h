@@ -11,10 +11,18 @@ private:
     const NetworkMonitor* monitor_=nullptr;
     String connecting_;
     uint8_t brightness_=80;
+    int16_t appliedBrightness_ = -1;
+    void applyBacklight(uint8_t level);
+    void drawPanelLine(int x, int y, uint8_t size, uint8_t columns,
+                       const String& text, uint16_t color);
     bool backlightReady_=false,powerSleeping_=false;
     uint32_t lastActivity_=0;
     int requestedPage_=-1;
     Arduino_ST7789* gfx;
+    Arduino_Canvas* robotCanvas_ = nullptr;
+    bool robotCanvasAttempted_ = false;
+    uint32_t robotStartedAt_ = 0;
+    int16_t robotPreviousX_ = -1, robotPreviousY_ = -1;
     std::vector<String> lines;
     uint16_t textColor;
     uint16_t backgroundColor;
@@ -61,7 +69,7 @@ public:
     void showHoldMessage(const String& line1, const String& line2, uint16_t color);
     void showSdPage(bool sdReady, const String& cardType, uint64_t totalBytes,
                     uint64_t usedBytes);
-    void desenharMatrixScreensaver(); 
+    void desenharRobotScreensaver();
     void dispararAnimacaoGravacaoSD(); 
     
     void print(String text);
