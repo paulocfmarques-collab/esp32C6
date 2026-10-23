@@ -74,6 +74,8 @@ da NVS/flash por ferramentas externas pode apagar as preferencias.
 
 ## Metricas reais publicadas
 
+Os tres contadores UDP ficam em RAM e reiniciam em zero a cada boot. O comando de limpeza de contadores persistentes de boot/watchdog nao os altera. Respostas seriais nao contam como respostas UDP. Chamadas sem destinatario UDP conhecido nao tentam envio e nao incrementam os contadores de envio. O listener aberto nao significa que o Wi-Fi esta conectado; acompanhe tambem `esp_status_online` e as metricas Wi-Fi.
+
 Formato Prometheus **0.0.4**, com `HELP`/`TYPE` uma vez por familia e labels
 escapados. Todas as series possuem **`device`**, o MAC STA estavel, inclusive
 quando a placa opera como AP. Informacao textual usa gauge com valor 1 e labels.
@@ -91,12 +93,18 @@ quando a placa opera como AP. Informacao textual usa gauge com valor 1 e labels.
 | Wi-Fi | `esp_wifi_rssi_dbm` | RSSI em dBm; omitida sem conexao STA. |
 | Wi-Fi | `esp_wifi_channel` | Canal atual; omitida sem conexao STA. |
 | Wi-Fi | `esp_wifi_disconnect_count` | Eventos de desconexao desde a inicializacao do servico, inclusive tentativas e desconexoes deliberadas. |
+| UDP | `esp_udp_listener_up` | Gauge: 1 quando a ultima abertura da porta UDP 4210 teve sucesso; 0 antes de abrir ou em caso de falha. Nao testa conectividade nem entrega remota. |
+| UDP | `esp_udp_packets_received_total` | Counter de datagramas detectados por `parsePacket()`, incluindo os rejeitados pelo limite de tamanho. |
+| UDP | `esp_udp_replies_sent_total` | Counter de respostas completas aceitas para envio local. Uma resposta conta uma vez, mesmo dividida em varios datagramas; nao confirma recebimento remoto. |
+| UDP | `esp_udp_send_errors_total` | Counter de respostas com falha em `beginPacket()`, escrita ou `endPacket()` de qualquer fragmento. Cada resposta com falha conta uma vez; pode ter ocorrido envio parcial. |
 | Wi-Fi | `esp_wifi_tx_power` | Limite de potencia configurado no driver em dBm; nao e consumo eletrico. Omitida sem STA ou se a leitura falhar. |
 | CPU | `esp_cpu_frequency_mhz` | Frequencia atual em MHz. |
 | CPU | `esp_cpu_usage_percent` | Uso agregado dos nucleos, de 0 a 100%, calculado a partir dos tempos idle. |
 | CPU | `esp_task_count` | Quantidade atual de tarefas FreeRTOS. |
 | CPU adicional | `esp_cpu_temperature_celsius` | Temperatura interna do chip via `temperatureRead()`, somente quando finita; nao e sensor ambiental. |
 | Clima adicional | `esp_weather_data_age_seconds` | Segundos desde a ultima atualizacao valida dos dados atuais Open-Meteo. |
+| Clima | `sensor_temperature_celsius` | Gauge da temperatura do ar em Porto Alegre, em Celsius, obtida do Open-Meteo; labels `source="open_meteo"` e `location="porto_alegre"`, alem de `device`. |
+| Clima | `sensor_humidity_percent` | Gauge da umidade relativa do ar em Porto Alegre, de 0 a 100%, obtida do Open-Meteo; mesmos labels de origem e localizacao. |
 | Memoria | `esp_heap_free_bytes` | Heap livre. |
 | Memoria | `esp_heap_total_bytes` | Heap total. |
 | Memoria | `esp_heap_minimum_free_bytes` | Menor heap livre desde boot. |
@@ -181,14 +189,19 @@ continua sem Wi-Fi, HTTP ou Prometheus.
 
 ## Metricas solicitadas sem integracao
 
-Estas 17 series nao sao publicadas ate existir fonte real, calibracao e
-instrumentacao. Dados Open-Meteo nao representam sensores conectados na placa.
+As series abaixo nao sao publicadas ate existir fonte real, calibracao e
+instrumentacao. Temperatura e umidade do Open-Meteo sao exportadas separadamente
+com labels de origem e localizacao e nao representam sensores conectados na placa.
+Elas aparecem somente apos a primeira consulta atual valida. Em caso de falha de
+atualizacao, mantem os ultimos valores validos e a idade continua aumentando em
+`esp_weather_data_age_seconds`. As consultas continuam em segundo plano, normalmente
+a cada 15 minutos, sem consultar a API durante a coleta de `/metrics`.
 
 | Grupo | Metricas | Necessidade |
 |---|---|---|
 | Energia | `esp_voltage_v`, `esp_current_ma`, `esp_power_w` | Medidor eletrico e leituras calibradas. |
 | Bateria | `esp_battery_percent`, `esp_battery_voltage_v` | Entrada de medicao, calibracao e curva da bateria. |
-| Ambiente | `sensor_temperature_celsius`, `sensor_humidity_percent`, `sensor_pressure_hpa`, `sensor_air_quality` | Sensores locais integrados. |
+| Ambiente | `sensor_pressure_hpa`, `sensor_air_quality` | Sensores locais integrados. |
 | Reles | `relay_state`, `relay_activation_count`, `relay_runtime_seconds` | Mapeamento e controle de reles com registro das transicoes. |
 | ADC | `gpio_analog_value` | Pinos e escalas sem conflito com os perifericos existentes. |
 | MQTT | `mqtt_connected`, `mqtt_messages_sent`, `mqtt_messages_received`, `mqtt_publish_errors` | Cliente MQTT e instrumentacao de conexao, publicacao e recepcao. |

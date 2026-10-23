@@ -12,6 +12,10 @@ a porta USB `COM` da placa. A tarefa configura 115200 baud. Encerre o monitor an
 de executar **ESP32C6: Compilar e gravar USB**. Consulte
 [LEIA-ME.md](LEIA-ME.md#compilar-e-gravar-pelo-vs-code) para compilacao e gravacao.
 
+A resposta de `help` começa com `COMANDOS` e apresenta cada comando em uma linha,
+com argumentos após `:`. O formato sem descrições junto à lista facilita o
+parseamento automático.
+
 Para visualizar a animação de leitura do SD, envie `tela:7`. O painel mostra um cartão com feixe de leitura, partículas em órbita e uma barra de atividade enquanto consulta os dados. Em FAT16/FAT32, a consulta do espaço usado libera o SPI entre setores para atualizar a tela. A duração depende do cartão; não há atraso artificial. Em outros formatos, a contagem nativa da SdFat pode pausar a animação enquanto mantém o SPI ocupado.
 
 Não há autenticação de comandos nesta versão. Use o console e o portal somente em uma rede confiável. Credenciais de `wifi_add` são ocultadas no log local, mas UDP não cifra a transmissão.

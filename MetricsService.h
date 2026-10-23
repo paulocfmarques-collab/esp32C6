@@ -21,6 +21,10 @@ public:
     void begin(WebServer& panel, SDUtil& storage);
     void process();
     bool resetCounters();
+    // Chamados no loop Arduino pelos pontos reais de abertura/recepcao/envio.
+    void setUdpListenerUp(bool up) { udpListenerUp = up; }
+    void recordUdpPacketReceived() { ++udpPacketsReceived; }
+    void recordUdpReply(bool sent) { if (sent) ++udpRepliesSent; else ++udpSendErrors; }
     static bool validHost(const String& host);
     static bool parseNumber(const String& text, uint16_t minimum, uint16_t maximum, uint16_t& value);
 
@@ -37,6 +41,8 @@ private:
     uint32_t savedAt = 0, imageBytes = 0, partitionBytes = 0;
     std::atomic<uint32_t> disconnects{0};
     uint64_t requests = 0, errors = 0;
+    bool udpListenerUp = false;
+    uint64_t udpPacketsReceived = 0, udpRepliesSent = 0, udpSendErrors = 0;
     double responseMs = 0;
     float cpuUsage = NAN;
 #if configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS

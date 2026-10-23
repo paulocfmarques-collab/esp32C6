@@ -10,7 +10,7 @@
 
 struct ClimaSnapshot
 {
-    float temperatura = 0, minima = 0, maxima = 0;
+    float temperatura = 0, umidade = 0, minima = 0, maxima = 0;
     int codigoCondicao = 0, chuva = 0;
     bool sincronizado = false, previsaoValida = false, ultimaFalhou = false;
     uint32_t ultimaAtualizacao = 0, previsaoAtualizada = 0;
@@ -70,20 +70,22 @@ class ClimaManager
         http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
         const char* url = "https://api.open-meteo.com/v1/"
                           "forecast?latitude=-30.03&longitude=-51.23&current=temperature_2m,"
-                          "weather_code&daily=temperature_2m_min,temperature_2m_max,precipitation_"
+                          "relative_humidity_2m,weather_code&daily=temperature_2m_min,temperature_2m_max,precipitation_"
                           "probability_max&forecast_days=1&timezone=America%2FSao_Paulo";
         if (http.begin(client, url) && http.GET() == HTTP_CODE_OK)
         {
             String payload = http.getString();
             int pos = payload.indexOf("\"current\":");
-            float t, w;
+            float t, h, w;
             if (pos >= 0)
             {
                 String block = payload.substring(pos, payload.indexOf('}', pos) + 1);
                 if (number(block, "temperature_2m", false, t) &&
+                    number(block, "relative_humidity_2m", false, h) && h >= 0 && h <= 100 &&
                     number(block, "weather_code", false, w))
                 {
                     next.temperatura = t;
+                    next.umidade = h;
                     next.codigoCondicao = int(w);
                     next.sincronizado = true;
                     next.ultimaAtualizacao = millis();

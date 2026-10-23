@@ -23,6 +23,7 @@ extern RGBLed rgbLed;
 #include "PortalUi.h"
 #include "LogPortal.h"
 #include "MetricsService.h"
+#include "Diagnostics.h"
 
 static String esc(const String& s)
 {
@@ -592,7 +593,9 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
 
     void iniciarUDP()
     {
-        udp.begin(C6NetworkConfig::UDP_PORT);
+        const bool opened = udp.begin(C6NetworkConfig::UDP_PORT) != 0;
+        metrics.setUdpListenerUp(opened);
+        Diagnostics::event(opened ? "UDP_LISTENER_UP" : "UDP_LISTENER_FAILED", "port=4210");
     }
 
     void iniciarPortal()
@@ -613,9 +616,25 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
     {
         if (!udp.remoteIP())
             return;
-        udp.beginPacket(udp.remoteIP(), udp.remotePort());
-        udp.print(s);
-        udp.endPacket();
+        const IPAddress remote = udp.remoteIP();
+        const uint16_t port = udp.remotePort();
+        size_t offset = 0;
+        bool sent = true;
+        // NetworkUDP divide respostas grandes em blocos de 1460 bytes.
+        // Enviamos explicitamente cada bloco para conferir todos os endPacket().
+        do {
+            const size_t remaining = s.length() - offset;
+            const size_t count = remaining > 1460 ? 1460 : remaining;
+            if (!udp.beginPacket(remote, port) ||
+                udp.write(reinterpret_cast<const uint8_t*>(s.c_str()) + offset, count) != count ||
+                udp.endPacket() != 1) {
+                sent = false;
+                break;
+            }
+            offset += count;
+        } while (offset < s.length());
+        metrics.recordUdpReply(sent);
+        if (!sent) Diagnostics::event("UDP_SEND_ERROR", "begin_write_or_end_failed=1");
     }
 
     void responderUDPPrintf(const char* format, ...)
@@ -631,8 +650,10 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
     bool checarMensagensUDP(String& s)
     {
         int n = udp.parsePacket();
-        if (!n)
+        if (n <= 0)
             return false;
+        // Inclui pacotes rejeitados por tamanho ou conteudo, nao so comandos validos.
+        metrics.recordUdpPacketReceived();
         char buf[256];
         if (n >= int(sizeof(buf)))
         {

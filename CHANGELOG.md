@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-21 — Clima no Prometheus
+
+- Exportacao de `sensor_temperature_celsius` e `sensor_humidity_percent` de Porto Alegre com labels `source="open_meteo"` e `location="porto_alegre"`. Consulta atual passa a incluir umidade relativa, validada entre 0 e 100%, com cache e idade da ultima atualizacao valida.
+
+## 2026-10-21 — Formato parseável do help
+
+- Padronizada a resposta de `help` como `COMANDOS` seguido de um comando por
+  linha, sem descrições misturadas à lista.
+- Atualizado o guia de comandos.
+
+## 2026-10-19
+
+- Metricas UDP: estado da abertura do listener, datagramas recebidos, respostas enviadas e erros de envio. Envios grandes verificam cada datagrama; contadores em RAM desde o boot e eventos de falha no diagnostico.
+
 ## Revisão — 2026-10-31
 
 - Adicionado `reset_counters` para zerar somente os contadores NVS de

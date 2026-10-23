@@ -353,13 +353,21 @@ String MetricsService::exposition() const
         if (esp_wifi_get_max_tx_power(&power) == ESP_OK) sample("esp_wifi_tx_power", String(power / 4.0f, 2));
     }
     sample("esp_wifi_disconnect_count", String(disconnects.load()));
+    sample("esp_udp_listener_up", udpListenerUp ? "1" : "0");
+    sample("esp_udp_packets_received_total", String(udpPacketsReceived), "", "counter");
+    sample("esp_udp_replies_sent_total", String(udpRepliesSent), "", "counter");
+    sample("esp_udp_send_errors_total", String(udpSendErrors), "", "counter");
     sample("esp_cpu_frequency_mhz", String(ESP.getCpuFreqMHz()));
     if (isfinite(cpuUsage)) sample("esp_cpu_usage_percent", String(cpuUsage, 3));
     const float temperature = temperatureRead();
     if (isfinite(temperature)) sample("esp_cpu_temperature_celsius", String(temperature, 2));
     const auto weather = ClimaManager::snapshot();
-    if (weather.sincronizado)
+    if (weather.sincronizado) {
+        const String weatherLabels = "source=\"open_meteo\",location=\"porto_alegre\"";
+        sample("sensor_temperature_celsius", String(weather.temperatura, 2), weatherLabels);
+        sample("sensor_humidity_percent", String(weather.umidade, 2), weatherLabels);
         sample("esp_weather_data_age_seconds", String((esp_timer_get_time() - weather.ultimaAtualizacaoUs) / 1000000.0, 3));
+    }
     sample("esp_task_count", String(uxTaskGetNumberOfTasks()));
     sample("esp_free_rtos_tasks", String(uxTaskGetNumberOfTasks()));
     sample("esp_heap_free_bytes", String(ESP.getFreeHeap()));
