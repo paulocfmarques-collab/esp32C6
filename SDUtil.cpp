@@ -7,23 +7,23 @@
 bool SDUtil::appendDiagnostic(const char* record)
 {
     SharedSpi::Guard spiGuard;
-    if (!mounted_ || !record) return false;
+    if (!mounted_ || !record) return recordLogWrite(false);
     const char* current = "/diagnostic.log";
     const char* previous = "/diagnostic.previous.log";
     FsFile file = sdCard.open(current, O_READ);
     const bool rotate = file && file.fileSize() >= 262144UL;
     file.close();
     if (rotate) {
-        if (sdCard.exists(previous) && !sdCard.remove(previous)) return false;
-        if (!sdCard.rename(current, previous)) return false;
+        if (sdCard.exists(previous) && !sdCard.remove(previous)) return recordLogWrite(false);
+        if (!sdCard.rename(current, previous)) return recordLogWrite(false);
     }
     file = sdCard.open(current, O_WRITE | O_CREAT | O_AT_END);
-    if (!file) return false;
+    if (!file) return recordLogWrite(false);
     const size_t length = strlen(record);
     const bool complete = file.write(record, length) == length;
     const bool synced = file.sync();
     file.close();
-    return complete && synced;
+    return recordLogWrite(complete && synced);
 }
 
 SdMetricsSnapshot SDUtil::metricsSnapshot()
@@ -33,6 +33,8 @@ SdMetricsSnapshot SDUtil::metricsSnapshot()
     portEXIT_CRITICAL(&metricsMux);
     copy.appends = appends.load();
     copy.appendErrors = appendErrors.load();
+    copy.logRecords = logRecords.load();
+    copy.logErrors = logErrors.load();
     return copy;
 }
 
@@ -309,10 +311,14 @@ bool SDUtil::writeText(String path, String text)
 bool SDUtil::appendText(String path, String text)
 {
     SharedSpi::Guard spiGuard;
+    const bool isLog = path == "/log.txt" || path == "/network_history.log" ||
+        path == "/network_history.previous.log" || path == "/diagnostic.log" ||
+        path == "/diagnostic.previous.log";
     if (!sdCard.card())
     {
         ++appendErrors;
         Serial.println("[SD] Falha ao acrescentar texto: cartao indisponivel.");
+        if (isLog) recordLogWrite(false);
         return false;
     }
 
@@ -330,6 +336,7 @@ bool SDUtil::appendText(String path, String text)
         digitalWrite(SD_CS, HIGH); // Libera o CS do cartão em caso de erro
         ++appendErrors;
         Serial.println("[SD] Falha ao abrir arquivo para acrescentar texto.");
+        if (isLog) recordLogWrite(false);
         return false;
     }
 
@@ -349,6 +356,7 @@ bool SDUtil::appendText(String path, String text)
         ++appendErrors;
         Serial.println("[SD] Falha ao gravar/sincronizar texto acrescentado.");
     }
+    if (isLog) recordLogWrite(ok);
     return ok;
 }
 

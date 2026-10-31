@@ -14,6 +14,7 @@ struct SdMetricsSnapshot
     uint64_t logBytes[3]{};
     int64_t updatedUs = 0;
     uint32_t appends = 0, appendErrors = 0;
+    uint32_t logRecords = 0, logErrors = 0;
 };
 
 class SDUtil
@@ -57,6 +58,11 @@ private:
     bool metricsBusy = false, metricsAttempted = false;
     uint32_t metricsAttemptAt = 0;
     std::atomic<uint32_t> appends{0}, appendErrors{0};
+    std::atomic<uint32_t> logRecords{0}, logErrors{0};
+    bool recordLogWrite(bool success) {
+        if (success) ++logRecords; else ++logErrors;
+        return success;
+    }
     static void metricsTask(void* context);
     void refreshMetrics();
 

@@ -386,6 +386,8 @@ String MetricsService::exposition() const
     sample("sdcard_metrics_available", card.valid ? "1" : "0");
     sample("sdcard_append_operations_total", String(card.appends), "", "counter");
     sample("sdcard_append_errors_total", String(card.appendErrors), "", "counter");
+    sample("sdcard_log_records_total", String(card.logRecords), "", "counter");
+    sample("sdcard_log_errors_total", String(card.logErrors), "", "counter");
     if (card.valid)
     {
         sample("sdcard_capacity_bytes", String(card.capacity));

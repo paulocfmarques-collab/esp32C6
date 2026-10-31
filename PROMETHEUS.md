@@ -166,6 +166,24 @@ pausar o display enquanto o SPI esta ocupado.
 | `sdcard_log_size_bytes` | gauge | Tamanho de cada log existente e legivel; label `file`: `/log.txt`, `/network_history.log`, `/network_history.previous.log`. |
 | `sdcard_append_operations_total` | counter | Chamadas `appendText` gravadas e sincronizadas com sucesso desde boot; inclui comandos, rede e outros arquivos. |
 | `sdcard_append_errors_total` | counter | Chamadas `appendText` com falha de acesso, abertura, escrita ou sincronizacao desde boot. |
+| `sdcard_log_records_total` | counter | Registros de log acrescentados e sincronizados com sucesso desde boot. Conta uma operacao de append por registro, mesmo que contenha varias linhas. Inclui logs de comandos, rede e diagnostico. |
+| `sdcard_log_errors_total` | counter | Tentativas de acrescentar registros de log com falha de acesso, rotacao, abertura, escrita ou sincronizacao desde boot. Cada tentativa falha conta uma vez. |
+
+Os dois contadores de log sao publicados mesmo sem cache de espaco valido e
+zeram no boot; nao representam a quantidade historica de linhas do cartao.
+Usam o mesmo label `device` (MAC STA) de `esp_info`. Para os paineis Grafana:
+
+```promql
+sdcard_log_records_total and on(device) esp_info{model="${device}"}
+```
+
+```promql
+sdcard_log_errors_total and on(device) esp_info{model="${device}"}
+```
+
+Nessas consultas, a variavel Grafana chamada `device` deve conter o valor
+do label `model`, e nao o MAC. O cruzamento `on(device)` usa o MAC entre as
+series. O filtro por modelo pode retornar varios dispositivos do mesmo modelo.
 
 Capacidades, ocupacao, clock, idade e tamanhos dos logs sao omitidos sem cache
 valido, nao preenchidos com zeros ficticios. Logs ausentes ou ilegíveis nao

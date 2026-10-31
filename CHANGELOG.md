@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-23
+
+- Contadores `sdcard_log_records_total` e `sdcard_log_errors_total` para logs de comandos, rede e diagnostico, com label `device` compativel com `esp_info` e consultas Grafana documentadas.
+
 ## 2026-10-21 — Clima no Prometheus
 
 - Exportacao de `sensor_temperature_celsius` e `sensor_humidity_percent` de Porto Alegre com labels `source="open_meteo"` e `location="porto_alegre"`. Consulta atual passa a incluir umidade relativa, validada entre 0 e 100%, com cache e idade da ultima atualizacao valida.
