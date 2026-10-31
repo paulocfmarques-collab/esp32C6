@@ -1,406 +1,443 @@
-# ESP32-C6 IoT Gateway & Control System
-
 <div align="center">
 
-![ESP32-C6](https://img.shields.io/badge/Platform-ESP32--C6-blue)
-![Language](https://img.shields.io/badge/Language-C%2B%2B-green)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen)
-![Features](https://img.shields.io/badge/Features-Weather%20%7C%20OTA%20%7C%20Display-orange)
+![ESP32-C6 Gateway — telemetria, controle e diagnóstico](docs/assets/readme-hero.svg)
 
-**A professional-grade IoT gateway system for the ESP32-C6 with WiFi connectivity, real-time ST7789 display, SD card logging, weather integration, OTA updates, and comprehensive UDP command processing.**
+# ESP32-C6 Gateway
+
+**Um painel de operações na palma da mão.**
+
+Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com portal local, consoles serial/UDP,
+logs no microSD, clima de Porto Alegre e métricas para Prometheus e Grafana.
+
+[![ESP32-C6](https://img.shields.io/badge/ESP32--C6-RISC--V-0f766e?style=flat-square)](#hardware)
+[![Arduino](https://img.shields.io/badge/Arduino_Core-ESP32_3.x-00878f?style=flat-square)](#primeiros-passos)
+[![C++](https://img.shields.io/badge/C%2B%2B-Firmware-2563eb?style=flat-square)](#arquitetura)
+[![Display](https://img.shields.io/badge/ST7789-172_%C3%97_320-7c3aed?style=flat-square)](#interface)
+[![Prometheus](https://img.shields.io/badge/Prometheus-HTTP_pull-e6522c?style=flat-square)](#observabilidade)
+[![Serial](https://img.shields.io/badge/Serial-115200_baud-475569?style=flat-square)](#comandos)
+[![UDP](https://img.shields.io/badge/UDP-Porta_4210-0891b2?style=flat-square)](#comandos)
+
+[Começar](#primeiros-passos) · [Arquitetura](#arquitetura) · [Portal](#portal) · [Métricas](#observabilidade) · [Diagnóstico](#diagnostico) · [Documentação](#documentacao)
 
 </div>
 
 ---
 
-## Table of Contents
+## O que este firmware entrega
 
-- [Overview](#overview)
-- [Repository-Driven Highlights](#repository-driven-highlights)
-- [✨ Key Features](#-key-features)
-- [Project Architecture](#project-architecture)
-- [System Components](#system-components)
-- [Extra Modules & Docs in This Repo](#extra-modules--docs-in-this-repo)
-- [Hardware Schematic](#hardware-schematic)
-- [Data Flow Diagram](#data-flow-diagram)
-- [System State Machine](#system-state-machine)
-- [Weather Integration](#-weather-integration)
-- [OTA Firmware Updates](#-ota-firmware-updates)
-- [Command Reference](#command-reference)
-- [Observability (Prometheus)](#observability-prometheus)
-- [Diagnostics & Log Portal](#diagnostics--log-portal)
-- [Installation & Setup](#installation--setup)
-- [Configuration](#configuration)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
+| Conectar | Acompanhar | Investigar |
+| :--- | :--- | :--- |
+| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e dez páginas no display | Logs de comandos, rede e diagnóstico no SD |
+| Comandos por serial USB e UDP | Ping ao gateway e histórico de latência | Memória, reinícios e duração das consultas HTTP |
+| Portal local e atualização OTA | Exportador Prometheus e integração com Grafana | Consulta de core dump com `crash_info` |
 
----
+O display também tem um **robô animado com dez expressões coloridas**: ele pisca,
+se movimenta e rebate nas bordas durante a inatividade. A tela permanece ligada.
 
-## Overview
+<a id="primeiros-passos"></a>
+## Primeiros passos
 
-The ESP32-C6 IoT Gateway & Control System is a sophisticated embedded application designed to provide:
+### 1. Preparar e gravar
 
-- **WiFi Connectivity:** Station and Access Point modes with portal configuration
-- **Remote Command Processing:** UDP-based command interface (port 4210)
-- **Real-Time Display:** ST7789 TFT with dynamic dashboard and screensaver
-- **LED Feedback:** WS2812B RGB LED with effects and status indication
-- **Data Logging:** SD card-based persistent logging with timestamps
-- **Network Synchronization:** NTP for accurate time synchronization
-- **Weather Integration:** Real-time weather data from Open-Meteo API
-- **OTA Updates:** Over-The-Air firmware updates with visual progress
-- **System Monitoring:** Real-time CPU, RAM, Flash, and climate metrics
+| Requisito | Configuração |
+| :--- | :--- |
+| Placa | Waveshare **ESP32-C6-LCD-1.47**, com ST7789 |
+| Core Arduino | **esp32 by Espressif Systems 3.x** |
+| Bibliotecas | **Arduino_GFX_Library**, **Adafruit NeoPixel**, **SdFat 2.x** |
+| Ferramentas | Arduino IDE 2 ou Arduino CLI com as tarefas do VS Code |
+| Serial USB | **115200 baud**, final de linha CR, LF ou CRLF |
 
-## Repository-Driven Highlights
+Abra [ESP32C6.ino](ESP32C6.ino), selecione a placa e a porta USB reais, habilite
+**USB CDC On Boot** para o console USB nativo e use uma partição compatível com OTA.
+Compile e grave. Flash, opções USB e partições devem corresponder à placa física.
 
-This README was enriched based on files currently present in this repository:
+<details>
+<summary><strong>Usar as tarefas do VS Code</strong></summary>
 
-- `COMANDOS.md` / `COMANDOS.pdf`: full operational command catalog and practical command usage.
-- `PROMETHEUS.md` / `PROMETHEUS.pdf`: telemetry and metrics contract guidance.
-- `CHANGELOG.md`: project evolution timeline and feature history.
-- `LEIA-ME.md`: Portuguese companion documentation.
-- `Diagnostics.*` + `CrashDiagnostics.*`: runtime diagnosis and crash-analysis flows.
-- `LogPortal.h`: local log portal support.
-- `RobotScreensaver.h`: dedicated display screensaver module.
-- `biblioteca/` and `diagnosticos/`: support assets/documentation directories.
+As tarefas estão em [.vscode/tasks.json](.vscode/tasks.json) e usam
+[.vscode/arduino.ps1](.vscode/arduino.ps1).
 
-### ✨ Key Features
+| Ação | Tarefa |
+| :--- | :--- |
+| Compilar | `ESP32C6: Compilar` — também por **Ctrl+Shift+B** |
+| Identificar a placa USB | `ESP32C6: Listar portas` |
+| Compilar e gravar | `ESP32C6: Compilar e gravar USB` |
+| Abrir o console | `ESP32C6: Monitor serial` |
 
-- ✅ Automatic WiFi connection with fallback to configuration portal
-- ✅ **Real-time weather dashboard** with temperature and conditions
-- ✅ **OTA firmware updates** with visual progress bar on display
-- ✅ UDP command reception and processing (30+ commands)
-- ✅ HTML-based WiFi configuration interface
-- ✅ Comprehensive system diagnostics and monitoring
-- ✅ SD card file management and persistent logging
-- ✅ RGB LED visual status indication with effects
-- ✅ Clock display with date/time and screensaver (Matrix-style cascade)
-- ✅ Advanced command parsing with parameter validation
-- ✅ Automatic weather sync every 15 minutes (Open-Meteo API)
-- ✅ System responsiveness with command queue and state machine
+FQBN sugerido pelas tarefas: `esp32:esp32:esp32c6:CDCOnBoot=cdc`.
+Informe a porta `COM` correta e encerre o monitor antes de gravar.
+Os artefatos ficam em `.build/`. As tarefas não instalam cores ou bibliotecas.
 
----
+[Guia detalhado de compilação e gravação](LEIA-ME.md#compilar-e-gravar-pelo-vs-code).
 
-## Project Architecture
+</details>
 
-### High-Level Architecture Diagram
+### 2. Conectar à rede
 
-```mermaid
-graph TB
-    subgraph ESP32C6["ESP32-C6 Control System"]
-        WiFi["WiFi Gateway<br/>- Station/AP<br/>- UDP Receiver<br/>- Portal Server"]
-        Display["Display Manager<br/>- Clock Display<br/>- Weather Dashboard<br/>- Screensaver<br/>- Rotation"]
-        Weather["Weather Manager<br/>- Open-Meteo API<br/>- Temperature<br/>- Conditions<br/>15min sync"]
-        
-        WiFi --> CMD["Command Processor<br/>- Parse commands<br/>- Execute actions<br/>- Log events"]
-        Display --> CMD
-        Weather --> CMD
-        
-        CMD --> LED["RGB LED Control<br/>- Status effects<br/>- Color feedback"]
-        CMD --> SD["SD Logger<br/>- File operations<br/>- Log persistence"]
-        CMD --> NTP["NTP Sync<br/>- Time accuracy<br/>- Timestamps"]
-        CMD --> OTA["OTA Manager<br/>- Firmware updates<br/>- Progress UI"]
-    end
+Na partida, conecte-se ao AP **`ESP32_C6_CONFIG`** e abra
+[192.168.4.1/wifi](http://192.168.4.1/wifi). Cadastre até cinco redes e salve.
+O firmware verifica a gravação antes de reiniciar. Após a conexão, use o IP da
+placa na sua rede para acessar o portal.
+
+### 3. Confirmar a operação
+
+Envie estes comandos pelo console serial ou por UDP:
+
+```text
+help
+status
+wifi_list
+sd_status
+clima
 ```
 
-### Layered Architecture
+Depois, abra `/prometheus` no portal, configure o exportador e baixe o YAML
+para adicionar o alvo ao seu servidor Prometheus.
+
+<a id="arquitetura"></a>
+## Arquitetura
+
+O loop principal coordena a interface, os comandos e os serviços de rede.
+Clima, consultas do SD e escrita de diagnóstico têm tarefas próprias.
+Display, cartão e desenhos da OTA compartilham uma proteção de acesso ao SPI.
 
 ```mermaid
-graph TB
-    subgraph APP["APPLICATION LAYER"]
-        Main["ESP32C6.ino<br/>- setup()<br/>- loop()<br/>- system orchestration<br/>- state management"]
+flowchart LR
+    subgraph Entradas["Acesso ao dispositivo"]
+        USB["Serial USB · 115200"]
+        UDP["UDP · 4210"]
+        WEB["Navegador · HTTP 80"]
+        PROM["Prometheus"]
     end
-    
-    subgraph SERVICE["SERVICE LAYER"]
-        CP["CommandProcessor<br/>- commands<br/>- logging<br/>- LED effects"]
-        GW["ESP32Gateway<br/>- WiFi<br/>- UDP<br/>- portal"]
-        DU["DisplayUtil<br/>- TFT screen<br/>- clock display<br/>- screensaver"]
-        WM["ClimaManager<br/>- Weather API<br/>- Data sync"]
-        OTA_S["OTAManager<br/>- OTA protocol<br/>- Progress UI"]
+    subgraph Firmware["ESP32-C6 Gateway"]
+        LOOP["Loop principal"]
+        CMD["CommandProcessor"]
+        PORTAL["Portal local"]
+        MET["MetricsService"]
+        WEATHER["ClimaManager"]
+        CACHE["Cache de clima e SD"]
+        DISPLAY["Display e robô"]
+        DIAG["Fila de diagnóstico"]
+        SPI["SharedSpi · mutex recursivo"]
     end
-    
-    subgraph UTIL["UTILITY LAYER"]
-        LED["RGBLed<br/>- LED effects"]
-        NTP["NTPUtil<br/>- time sync"]
-        SD["SDUtil<br/>- SD file ops"]
-    end
-    
-    subgraph HAL["HARDWARE ABSTRACTION/DRIVERS"]
-        HW["Arduino Core / WiFi / SPI / SD / Adafruit NeoPixel / HTTPClient"]
-    end
-    
-    subgraph HARDWARE["HARDWARE LAYER"]
-        DEV["ESP32-C6 | ST7789 TFT | RGB LED | microSD | WiFi network | HTTP/HTTPS"]
-    end
-    
-    APP --> SERVICE
-    SERVICE --> UTIL
-    UTIL --> HAL
-    HAL --> HARDWARE
+    USB --> LOOP
+    UDP --> LOOP
+    LOOP --> CMD
+    WEB --> PORTAL
+    PROM -->|"GET /metrics"| MET
+    LOOP --> DISPLAY
+    LOOP --> WEATHER
+    WEATHER --> CACHE
+    CACHE --> MET
+    CMD --> SPI
+    LOOP --> DIAG
+    WEATHER --> DIAG
+    DISPLAY --> DIAG
+    MET --> DIAG
+    PORTAL --> SPI
+    DISPLAY --> SPI
+    DIAG --> SPI
+    SPI --> SD["microSD"]
+    SPI --> TFT["ST7789"]
+    classDef accent fill:#103b42,stroke:#2dd4bf,color:#ecfeff
+    class LOOP,MET,SPI accent
 ```
 
----
+### Fluxo de conexão Wi-Fi
 
-## System Components
+O AP fica disponível durante a busca. As tentativas dos perfis são controladas
+por estados, com até **10 segundos por rede** e nova rodada após **30 segundos**.
 
-### Core runtime
-- `ESP32C6.ino` — main orchestrator (`setup`, `loop`, display mode transitions, OTA hook, command polling)
-- `CommandProcessor.*` — command parser/executor and multi-channel response routing
-- `ESP32Gateway.h` — WiFi/AP/UDP/portal integration contract
-- `DisplayUtil.*` — dashboard, console display, and display mode rendering
-- `RGBLed.*` — state/health visual feedback
-- `NTPUtil.*` — time sync and formatting
-- `SDUtil.*` — persistent storage, logs, and file utilities
-- `ClimaManager.h` — weather retrieval and caching
-- `OTAManager.h` — OTA lifecycle and progress signaling
+```mermaid
+flowchart TD
+    BOOT["Partida: SPI, SD, diagnóstico e display"] --> SERVICES["Portal, UDP, métricas e NTP"]
+    SERVICES --> AP["AP ESP32_C6_CONFIG disponível"]
+    AP --> SEARCH["Buscar redes e tentar perfis salvos"]
+    SEARCH --> CONNECTED{"STA conectou?"}
+    CONNECTED -->|"Sim"| ONLINE["Fechar AP e atender pelo IP da rede"]
+    CONNECTED -->|"Não, há outro perfil"| SEARCH
+    CONNECTED -->|"Perfis esgotados"| WAIT["Manter AP e aguardar 30 s"]
+    WAIT --> SEARCH
+    ONLINE --> LOST{"Conexão perdida?"}
+    LOST -->|"Sim"| AP
+    LOST -->|"Não"| ONLINE
+```
 
-### Diagnostics & operations
-- `Diagnostics.*` — diagnostic execution helpers and health introspection
-- `CrashDiagnostics.*` — crash/restart diagnostic support
-- `SerialConsole.h` — serial operations/debug pathway
-- `LogPortal.h` — portal-facing log handling
-- `NetworkMonitor.*` — network health sampling/monitoring
-- `MetricsService.*` — metrics collection/exposure contract
+<a id="portal"></a>
+## Portal local
 
-### UI and interaction support
-- `PortalUi.h` — configuration and portal UI model
-- `RobotScreensaver.h` — animated screensaver behavior
-- `SharedSpi.h` — SPI sharing utility between peripherals
+Interface independente de fontes, scripts e estilos externos, acessível pelo
+navegador na **porta 80**.
 
----
+| Rota | Uso |
+| :--- | :--- |
+| `/info` | Informações do dispositivo e da conexão |
+| `/wifi` | Cadastro e edição dos cinco perfis Wi-Fi |
+| `/logs` | Visualização dos logs do cartão, com atualização automática |
+| `/prometheus` | Preferências do exportador de métricas |
+| `/prometheus.yml` | Download da configuração sugerida de coleta |
 
-## Extra Modules & Docs in This Repo
+O endpoint `/metrics` usa a porta configurada, **9120 por padrão**. Se ela for
+alterada para 80, ele compartilha o servidor do portal.
 
-| File/Dir | Purpose |
-|---|---|
-| `COMANDOS.md` | Complete command catalog and usage guidance |
-| `COMANDOS.pdf` | Printable/export version of command catalog |
-| `PROMETHEUS.md` | Prometheus metrics and observability guide |
-| `PROMETHEUS.pdf` | Printable/export version of observability guide |
-| `CHANGELOG.md` | Historical changes and release evolution |
-| `LEIA-ME.md` | Portuguese complementary README |
-| `diagnosticos/` | Diagnostic support resources |
-| `biblioteca/` | Auxiliary library resources |
+<a id="observabilidade"></a>
+## Prometheus e Grafana
 
----
-
-## Hardware Schematic
-
-### Pin Mapping Summary
-
-| Component | Signal | GPIO |
-|-----------|--------|------|
-| **SD Card** | CS | GPIO 4 |
-| | MISO | GPIO 5 |
-| | MOSI | GPIO 6 |
-| | SCLK | GPIO 7 |
-| **RGB LED** | DATA | GPIO 8 |
-| **Display (SPI)** | MOSI/MISO/SCLK/CS | Board-specific |
-
----
-
-## Data Flow Diagram
+**Coleta por HTTP pull:** o servidor Prometheus consulta o ESP32. As preferências
+ficam em NVS; salvar o formulário na placa não altera o servidor Prometheus.
 
 ```mermaid
 sequenceDiagram
-    participant Host as External Host<br/>UDP Client
-    participant GW as ESP32Gateway<br/>UDP Server
-    participant CMD as CommandProcessor
-    participant Display as DisplayUtil
-    participant SD as SDUtil
-    participant LED as RGBLed
-    participant Weather as ClimaManager
-    participant OTA as OTAManager
-    participant Response as UDP Response
-    
-    Host->>GW: UDP Packet (Command)
-    GW->>CMD: receiveCommand()
-    CMD->>CMD: parse command<br/>validate args<br/>dispatch call
-    
-    par Parallel Execution
-        CMD->>Display: update UI
-        CMD->>SD: append log
-        CMD->>LED: status LED
-        CMD->>Weather: sync weather
-    end
-    
-    CMD->>Response: Send Response
-    Response-->>Host: UDP Response
+    participant API as Open-Meteo
+    participant Clima as Tarefa de clima
+    participant SD as Tarefa de consulta SD
+    participant Cache as Cache em RAM
+    participant ESP as Exportador HTTP
+    participant Prom as Prometheus
+    participant Graf as Grafana
+    Clima->>API: Consultar Porto Alegre, normalmente a cada 15 min
+    API-->>Clima: Temperatura, umidade e previsão
+    Clima->>Cache: Publicar última consulta válida
+    SD->>Cache: Atualizar estatísticas, a cada 30 s
+    Prom->>ESP: GET /metrics, porta configurada
+    ESP->>Cache: Ler dados disponíveis
+    Cache-->>ESP: Snapshot, contadores e idade dos dados
+    ESP-->>Prom: Métricas no formato Prometheus 0.0.4
+    Graf->>Prom: Consultas PromQL
+    Prom-->>Graf: Séries para os painéis
 ```
 
----
+| Área | Exemplos de métricas |
+| :--- | :--- |
+| Identificação | `esp_info`, `esp_firmware_version`, `esp_ip_address` |
+| Recursos | `esp_heap_free_bytes`, `esp_cpu_usage_percent`, `esp_cpu_temperature_celsius` |
+| UDP | `esp_udp_listener_up`, `esp_udp_packets_received_total`, `esp_udp_send_errors_total` |
+| Cartão e logs | `sdcard_mounted`, `sdcard_log_records_total`, `sdcard_log_errors_total` |
+| Clima de Porto Alegre | `sensor_temperature_celsius`, `sensor_humidity_percent`, `esp_weather_data_age_seconds` |
 
-## System State Machine
+As métricas de clima usam `source="open_meteo"` e `location="porto_alegre"`.
+A temperatura interna do chip é uma série separada. Todas as séries incluem
+o label `device`, com o MAC STA, para correlacionar os painéis.
+
+<details>
+<summary><strong>Exemplo de configuração do Prometheus</strong></summary>
+
+Substitua o endereço e a porta pelos valores da sua placa:
+
+```yaml
+scrape_configs:
+  - job_name: esp32_c6
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['192.168.1.42:9120']
+```
+
+Se `scrape_configs` já existir, adicione apenas o job à lista.
+
+```promql
+# Taxa de registros de log gravados por segundo
+rate(sdcard_log_records_total[5m])
+
+# Erros de envio UDP nos últimos cinco minutos
+increase(esp_udp_send_errors_total[5m])
+
+# Temperatura de Porto Alegre
+sensor_temperature_celsius{source="open_meteo",location="porto_alegre"}
+```
+
+</details>
+
+**[Catálogo completo, labels e limites de interpretação → PROMETHEUS.md](PROMETHEUS.md)**
+
+<a id="comandos"></a>
+## Comandos: serial e UDP
+
+Os dois transportes usam o mesmo processador de comandos, com limite de
+**255 bytes** por entrada. O comando `help` retorna `COMANDOS` e um comando por
+linha, em formato apropriado para leitura automática.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> BOOT
-    BOOT --> INIT: Initialize HW
-    INIT --> WIFI_CHECK: WiFi Connect?
-    WIFI_CHECK --> STA: Connected
-    WIFI_CHECK --> AP: Not Found
-    STA --> READY: NTP Sync
-    AP --> CONFIG: Portal Active
-    CONFIG --> READY: Credentials Saved
-    READY --> CMD_RX: UDP Received
-    CMD_RX --> EXECUTE: Parse Command
-    EXECUTE --> CONSOLE: Display Output
-    CONSOLE --> CLOCK: 10s timeout
-    CLOCK --> MONITOR: Clock Display
-    MONITOR --> SCREENSAVER: 15min idle
-    SCREENSAVER --> MONITOR: Activity detected
-    MONITOR --> CMD_RX: UDP Received
-    CMD_RX --> OTA: OTA Update
-    OTA --> READY: Update Complete
+sequenceDiagram
+    participant Cliente as Cliente serial ou UDP
+    participant Loop as Loop principal
+    participant Comando as CommandProcessor
+    participant Servico as Serviço solicitado
+    Cliente->>Loop: Comando de texto
+    Loop->>Comando: Normalizar nome e preservar argumentos
+    Comando->>Servico: Validar parâmetros e executar
+    Servico-->>Comando: Resultado
+    alt Comando recebido pela serial
+        Comando-->>Cliente: Resposta no console serial
+    else Comando recebido por UDP
+        Comando-->>Cliente: Resposta serial e ao cliente UDP
+    end
 ```
 
----
+| Objetivo | Comandos úteis |
+| :--- | :--- |
+| Identificação e recursos | `info`, `status`, `version`, `ram`, `uptime` |
+| Redes e monitoramento | `wifi_list`, `net_info`, `net_monitor`, `net_history` |
+| Arquivos e cartão | `sd_status`, `sd_list:/`, `sd_read:/diagnostic.log` |
+| Clima | `clima`, `clima_age`, `clima_sync` |
+| Tela | `tela:7`, `tela_next`, `brilho:40` |
+| Investigação de falhas | `reason`, `crash_info` |
 
-## ⛅ Weather Integration
+**[Sintaxe, argumentos e exemplos → COMANDOS.md](COMANDOS.md)**
 
-- Open-Meteo API integration (no API key required)
-- 15-minute cache/sync cycle
-- Condition mapping via WMO codes
-- Dashboard display integration
-- Command-triggered refresh (`CLIMA_UPDATE`)
+<a id="interface"></a>
+## Display, botão e proteção de tela
 
----
+| Página | Conteúdo | Página | Conteúdo |
+| :---: | :--- | :---: | :--- |
+| 0 | Relógio, clima e Wi-Fi | 5 | Sistema |
+| 1–2 | NTP e serviços | 6 | Perfis Wi-Fi |
+| 3–4 | Rede | 7 | Cartão SD |
+| 8 | Monitor de rede e latência | 9 | Previsão diária |
 
-## 🔄 OTA Firmware Updates
+| Ação no BOOT | Resultado |
+| :--- | :--- |
+| Pressão curta | Próxima página |
+| Segurar por 3 segundos e soltar | Reiniciar |
+| Segurar por 10 segundos e soltar | Limpar redes salvas e reiniciar |
 
-- ArduinoOTA lifecycle integration
-- Display progress and LED feedback during transfer
-- Success/failure handling with automatic post-update flow
-- WiFi-only update surface for local-network operation
+Após **60 segundos de inatividade**, entra o robô animado. As expressões mudam
+a cada **4,2 segundos**. Após **2 minutos**, o brilho cai para no máximo 20%,
+sem desligar automaticamente a tela. Botão ou comando encerram a proteção.
+O brilho padrão é 80%; `tela_off` e `brilho:0` continuam disponíveis para desligamento manual.
 
----
+<a id="diagnostico"></a>
+## Diagnóstico que continua no cartão
 
-## Command Reference
+Em `/logs`, escolha o arquivo e acompanhe o trecho mais recente, com atualização
+automática a cada cinco segundos e limite de **8 KiB por consulta**.
 
-> Source of truth: `COMANDOS.md`
+| Arquivo no SD | Conteúdo | Rotação |
+| :--- | :--- | :--- |
+| `/log.txt` | Registros do console de comandos | Sem rotação automática nesta rotina |
+| `/network_history.log` | Conexão, quedas e amostras de ping | Arquivo anterior a partir de aproximadamente 64 KiB |
+| `/diagnostic.log` | Boot, memória, Wi-Fi, animação, clima e consultas de métricas | Arquivo anterior a partir de 256 KiB |
+| `/crash_*.txt` | Relatórios arquivados por `crash_info` | Nomes únicos, sem sobrescrever relatórios anteriores |
 
-### Core examples
+Os arquivos anteriores de rede e diagnóstico usam o sufixo `.previous.log`.
+Os relatórios `crash_*.txt` podem ser listados e lidos pelos comandos SD;
+o seletor web oferece os logs de comandos, rede e diagnóstico.
 
-| Category | Command | Description |
-|---|---|---|
-| LED | `LED_ON`, `LED_OFF`, `LED_PISCA:x:y`, `LED_BLINK:y` | LED state/effects |
-| System | `CPU`, `RAM`, `FLASH`, `UPTIME`, `NET_INFO`, `VERSION`, `BUILD` | Runtime and build info |
-| Weather | `CLIMA`, `CLIMA_INFO`, `CLIMA_UPDATE` | Weather status and refresh |
-| SD | `LIST`, `SD_TYPE`, `SD_SIZE`, `SD_TEST`, `READ:/path`, `DEL:/path` | Storage operations |
-| Config | `RESET_WIFI`, `SCAN_WIFI` | Connectivity management |
-
----
-
-## Observability (Prometheus)
-
-> Source of truth: `PROMETHEUS.md`
-
-Expected monitored domains:
-- command execution and status;
-- gateway/network health;
-- system resource indicators;
-- weather/feature service status;
-- operational fault counters.
-
----
-
-## Diagnostics & Log Portal
-
-The repository includes dedicated structures for field diagnostics and operational support:
-
-- `Diagnostics.*`: quick and deep runtime checks;
-- `CrashDiagnostics.*`: recovery/crash context helpers;
-- `LogPortal.h`: in-device log exposure path;
-- `diagnosticos/`: supporting assets and guidance.
-
-Recommended operations playbook:
-1. Use network/system commands to validate connectivity and baseline health.
-2. Trigger diagnostics and inspect crash signals when instability is observed.
-3. Validate SD logging and timestamp consistency (NTP synced).
-4. Correlate with metrics exported for alerting/dashboards.
-
----
-
-## Installation & Setup
-
-### Requirements
-
-- ESP32-C6 development board
-- Arduino IDE or PlatformIO
-- ST7789 TFT display
-- microSD card module/socket (FAT32)
-- WS2812B RGB LED
-- USB cable for flashing and serial monitor
-
-### Build/flash (quick)
-
-```bash
-# PlatformIO (if configured)
-pio run
-pio run -t upload
-pio device monitor
+```mermaid
+flowchart TD
+    EVENT["Eventos de operação"] --> QUEUE["Fila limitada de diagnóstico"]
+    QUEUE --> WRITER["Tarefa de escrita e sincronização no SD"]
+    BOOT["Boot e marcador RTC"] -->|"Gravação inicial direta"| LOG
+    WRITER --> LOG["diagnostic.log e arquivo anterior"]
+    LOG --> VIEW["Portal /logs ou comandos SD"]
+    CRASH["Comando crash_info"] --> CHECK{"Core dump ELF válido?"}
+    CHECK -->|"Não"| REPORT["Informar ausência ou erro"]
+    CHECK -->|"Sim"| SAVE["Salvar relatório único no SD"]
+    SAVE --> VERIFY{"Gravação e releitura conferem?"}
+    VERIFY -->|"Sim"| ERASE["Apagar registro interno de crash"]
+    VERIFY -->|"Não"| KEEP["Preservar registro interno"]
 ```
 
-For Arduino IDE, open `ESP32C6.ino`, select ESP32-C6 board/port, compile and upload.
+`METRICS_START`, `METRICS_RENDERED` e `METRICS_END` ajudam a localizar interrupções.
+`WEATHER_START` e `WEATHER_END` permitem comparar memória entre consultas do clima.
+Um marcador RTC pode registrar uma consulta interrompida após reset; ele não garante
+recuperação após perda de alimentação. O retorno do envio HTTP não comprova que
+o Prometheus recebeu a resposta completa.
+
+O comando `crash_info` requer core dump ELF em flash e partição compatível.
+No C6, o relatório contém registradores e pilha **RISC-V**, para análise com
+o ELF correspondente ao firmware gravado.
+
+<a id="hardware"></a>
+## Hardware e SPI compartilhado
+
+Pinagem da **Waveshare ESP32-C6-LCD-1.47** usada neste projeto:
+
+| Recurso | GPIO | Recurso | GPIO |
+| :--- | :---: | :--- | :---: |
+| SPI SCLK | 7 | TFT CS | 14 |
+| SPI MOSI | 6 | TFT DC | 15 |
+| SD MISO | 5 | TFT reset | 21 |
+| SD CS | 4 | TFT backlight | 22 |
+| LED RGB | 8 | Botão BOOT | 9 |
+
+O ST7789 usa offset de **34 pixels** e orientação paisagem nas páginas.
+O SD é inicializado antes do display. O mutex recursivo de [SharedSpi.h](SharedSpi.h)
+coordena os acessos; consultas FAT16/FAT32 liberam o barramento entre blocos.
+Uma operação lenta no cartão ainda pode atrasar a interface.
+
+> [!IMPORTANT]
+> Esta pinagem corresponde ao modelo **ESP32-C6-LCD-1.47**, não à variante Touch
+> nem a placas ESP32-C3. Confira o modelo físico antes de adaptar os pinos.
+
+<a id="documentacao"></a>
+## Mapa da documentação
+
+| Documento | Quando usar |
+| :--- | :--- |
+| [LEIA-ME.md](LEIA-ME.md) | Instalação detalhada, configuração e operação |
+| [COMANDOS.md](COMANDOS.md) | Referência completa de comandos serial/UDP |
+| [PROMETHEUS.md](PROMETHEUS.md) | Métricas, configuração da coleta e Grafana |
+| [CHANGELOG.md](CHANGELOG.md) | Histórico das alterações |
+| [Teste SPI isolado](diagnosticos/SD_SPI_Diagnostico/LEIA-ME.md) | Investigar cartão sem resposta ao CMD0 |
+
+<details>
+<summary><strong>Mapa dos módulos do firmware</strong></summary>
+
+| Módulo | Responsabilidade |
+| :--- | :--- |
+| [ESP32C6.ino](ESP32C6.ino) | Inicialização, loop, botão e transições de tela |
+| [ESP32Gateway.h](ESP32Gateway.h) | Perfis Wi-Fi, portal, UDP e histórico |
+| [CommandProcessor.cpp](CommandProcessor.cpp) | Validação, comandos e respostas |
+| [DisplayUtil.cpp](DisplayUtil.cpp) · [RobotScreensaver.h](RobotScreensaver.h) | Páginas, brilho e animações |
+| [MetricsService.cpp](MetricsService.cpp) | Exportador e configuração Prometheus |
+| [NetworkMonitor.cpp](NetworkMonitor.cpp) | Ping assíncrono, latência e quedas |
+| [ClimaManager.h](ClimaManager.h) · [NTPUtil.cpp](NTPUtil.cpp) | Clima em cache e sincronização de horário |
+| [SDUtil.cpp](SDUtil.cpp) · [SharedSpi.h](SharedSpi.h) | Arquivos, estatísticas e acesso compartilhado ao SPI |
+| [Diagnostics.cpp](Diagnostics.cpp) · [CrashDiagnostics.cpp](CrashDiagnostics.cpp) | Diagnóstico persistente e consulta de crashes |
+| [PortalUi.h](PortalUi.h) · [LogPortal.h](LogPortal.h) | Interface web e visualização de logs |
+| [SerialConsole.h](SerialConsole.h) | Entrada serial por linha |
+| [OTAManager.h](OTAManager.h) · [RGBLed.cpp](RGBLed.cpp) | Atualização OTA e sinalização RGB |
+
+Os fontes ativos ficam na raiz. `biblioteca/` contém materiais auxiliares;
+`diagnosticos/` contém sketches separados para investigação.
+
+</details>
+
+## Operação e limites
+
+| Situação | Primeiro passo |
+| :--- | :--- |
+| `/metrics` com timeout ou EOF | Consultar `/logs`, memória disponível, Wi-Fi e eventos de métricas |
+| Cartão sem resposta ao CMD0 | Conferir encaixe e modelo; usar o teste SPI isolado antes de alterar o formato |
+| Clima ainda sem métricas | Aguardar a primeira consulta válida ou solicitar `clima_sync`; verificar `clima_age` |
+| Reinícios ou exceções | Consultar `reason`, diagnóstico e `crash_info`; preservar o ELF do firmware |
+| Sem resposta a comandos | Conferir IP, UDP 4210 ou serial a 115200 com final de linha |
+
+> [!NOTE]
+> Ping ao gateway não testa acesso à Internet. Os dados meteorológicos são do
+> Open-Meteo, não de sensores ambientais locais. O firmware continua operando
+> sem SD, mas não consegue persistir logs sem um cartão gravável.
+
+> [!WARNING]
+> Portal, UDP e OTA não têm autenticação configurada neste projeto. Use em rede
+> confiável. O AP de configuração é aberto e a consulta HTTPS do clima usa
+> `setInsecure()`, sem validação de certificado.
+
+### Validação
+
+Os badges acima identificam tecnologias e interfaces, não resultados de CI.
+A revisão deste README é documental: não substitui compilação, verificação
+do tamanho do firmware e testes na placa. Os PDFs presentes no repositório
+são cópias de consulta; os guias Markdown refletem as atualizações nos fontes.
 
 ---
 
-## Configuration
+<div align="center">
 
-- WiFi credentials persistence with AP fallback (`ESP32_C6_CONFIG` / `192.168.4.1`)
-- NTP sync for consistent timestamps
-- Weather location and refresh cycle configurable in code
-- OTA behavior integrated into runtime loop
+**Conecte. Observe. Investigue.**
 
----
+[Guia operacional](LEIA-ME.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md) · [Histórico](CHANGELOG.md)
 
-## Development
+</div>
 
-### Repository structure snapshot
-
-```text
-esp32C6/
-├── ESP32C6.ino
-├── CommandProcessor.h/.cpp
-├── ESP32Gateway.h
-├── DisplayUtil.h/.cpp
-├── RGBLed.h/.cpp
-├── NTPUtil.h/.cpp
-├── SDUtil.h/.cpp
-├── ClimaManager.h
-├── OTAManager.h
-├── Diagnostics.h/.cpp
-├── CrashDiagnostics.h/.cpp
-├── MetricsService.h/.cpp
-├── NetworkMonitor.h/.cpp
-├── SerialConsole.h
-├── PortalUi.h
-├── LogPortal.h
-├── RobotScreensaver.h
-├── SharedSpi.h
-├── COMANDOS.md / COMANDOS.pdf
-├── PROMETHEUS.md / PROMETHEUS.pdf
-├── CHANGELOG.md
-├── LEIA-ME.md
-├── biblioteca/
-└── diagnosticos/
-```
-
----
-
-## Troubleshooting
-
-| Symptom | Possible cause | Suggested check |
-|---|---|---|
-| No command response | UDP/IP mismatch or parser path issue | `NET_INFO`, UDP port 4210, `CommandProcessor.*` |
-| SD failures | wiring/card/format issues | `SD_TEST`, GPIO 4-7 mapping, FAT32 |
-| Weather not updating | internet/API/dns issues | connectivity + `CLIMA_UPDATE` |
-| Frequent resets | runtime exception | `CrashDiagnostics.*`, `Diagnostics.*` |
-| Missing metrics | telemetry path not active | `MetricsService.*`, `PROMETHEUS.md` |
-
----
-
-For detailed command semantics, operational observability, and project history, consult:
-- `COMANDOS.md`
-- `PROMETHEUS.md`
-- `CHANGELOG.md`
-- `LEIA-ME.md`
