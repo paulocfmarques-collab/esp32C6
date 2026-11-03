@@ -1,5 +1,7 @@
 # Prometheus - ESP32-C6 Gateway
 
+Revisão documental: **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Operação](LEIA-ME.md)
+
 ## Configuracao web e portas
 
 1. Abra `http://IP_DO_ESP32/prometheus` pelo link **Prometheus** no portal.
@@ -223,6 +225,16 @@ a cada 15 minutos, sem consultar a API durante a coleta de `/metrics`.
 | Reles | `relay_state`, `relay_activation_count`, `relay_runtime_seconds` | Mapeamento e controle de reles com registro das transicoes. |
 | ADC | `gpio_analog_value` | Pinos e escalas sem conflito com os perifericos existentes. |
 | MQTT | `mqtt_connected`, `mqtt_messages_sent`, `mqtt_messages_received`, `mqtt_publish_errors` | Cliente MQTT e instrumentacao de conexao, publicacao e recepcao. |
+
+## Sensor de som e GPIO0
+
+O sensor analógico de som RoboCore está configurado no **GPIO0** e alimentado
+em **3V3**; veja [PINOUT.md](PINOUT.md#ligação-do-sensor-de-som-robocore). A tarefa
+de captação alimenta o equalizador de 12 faixas da página **10**, com ganho
+visual ajustável e histórico temporal alternativo de 9,6 segundos. Não há uma série Prometheus de som
+implementada, nem exportação dessa leitura como `gpio_analog_value` ou decibéis.
+As séries de temperatura e umidade continuam sendo dados do Open-Meteo de
+Porto Alegre, identificados pelos labels de origem e localização.
 
 ## Compilacao e teste na placa
 

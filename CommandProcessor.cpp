@@ -109,7 +109,9 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "wifi_list\n"
                   "net_monitor\n"
                   "net_history\n"
-                  "tela:0..9\n"
+                  "tela:0..10\n"
+                  "som_ganho:1..64\n"
+                  "som_modo:equalizador|historico\n"
                   "tela_next\n"
                   "brilho:0..100\n"
                   "tela_on\n"
@@ -186,14 +188,34 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     else if (command.startsWith("tela:"))
     {
         String arg = command.substring(5);
-        bool valid = arg.length() == 1 && arg[0] >= '0' && arg[0] <= '9';
+        bool valid = (arg.length() == 1 && arg[0] >= '0' && arg[0] <= '9') || arg == "10";
         if (valid)
         {
             display_.selectPage(arg.toInt());
             answerAll("Pagina selecionada\n", false);
         }
         else
-            answerAll("Uso: tela:0..9\n", false);
+            answerAll("Uso: tela:0..10\n", false);
+    }
+    else if (command.startsWith("som_ganho:")) {
+        String value = command.substring(10);
+        bool valid = value.length() >= 1 && value.length() <= 2;
+        for (size_t i = 0; i < value.length(); ++i) if (!isDigit(value[i])) valid = false;
+        if (!sound_) answerAll("Monitor de som indisponivel\n", false);
+        else if (!valid || !sound_->setGain(value.toInt())) answerAll("Uso: som_ganho:1..64\n", false);
+        else {
+            display_.selectPage(10);
+            answerAll("Ganho visual do som: " + String(value.toInt()) + "x\n", false);
+        }
+    }
+    else if (command.startsWith("som_modo:")) {
+        String mode = command.substring(9); mode.trim(); mode.toLowerCase();
+        if (!sound_) answerAll("Monitor de som indisponivel\n", false);
+        else if (mode != "equalizador" && mode != "historico") answerAll("Uso: som_modo:equalizador|historico\n", false);
+        else {
+            sound_->setEqualizer(mode == "equalizador"); display_.selectPage(10);
+            answerAll("Modo do som: " + mode + "\n", false);
+        }
     }
     else if (command.startsWith("brilho:"))
     {

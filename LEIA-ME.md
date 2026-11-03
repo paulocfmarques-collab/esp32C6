@@ -1,6 +1,8 @@
 # ESP32-C6 Gateway — LEIA-ME
 
-Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de 172 × 320 pixels, LED RGB e microSD. Reúne console UDP, portal de configuração, cinco redes Wi-Fi, NTP, clima e monitor de conexão.
+Revisão documental: **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+
+Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de 172 × 320 pixels, LED RGB e microSD. Reúne console serial/UDP, portal de configuração, cinco redes Wi-Fi, NTP, clima, monitor de conexão, métricas Prometheus e monitor de som RoboCore no GPIO0.
 
 Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecidos. Não é o firmware do ESP32-C3 com tela de 1,44 polegada.
 
@@ -14,6 +16,7 @@ Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecid
 - Previsão diária separada: mínima, máxima e probabilidade máxima de chuva do dia.
 - Portal responsivo com informações do dispositivo e edição dos cinco perfis; senhas salvas não são enviadas ao navegador.
 - Backlight PWM ajustável, redução automática após inatividade e novos comandos documentados no `help`.
+- Captação de som RoboCore no GPIO0, em tarefa dedicada, com gráfico temporal na página 10 e sem gravação de áudio.
 
 ## Instalação
 
@@ -26,10 +29,12 @@ sugerido ficam salvos em Preferences/NVS `telemetry`. O Prometheus coleta
 e aplique no servidor. A porta muda sem reboot e e restaurada apos reiniciar.
 
 Sao exportadas metricas reais de sistema, Wi-Fi, CPU, memoria, GPIO, HTTP,
-temperatura interna, idade do clima e SD. O cache SD e atualizado em tarefa
+temperatura interna, temperatura e umidade de Porto Alegre, idade do clima, UDP e SD. O cache SD e atualizado em tarefa
 a cada 30 segundos, preservando o SPI compartilhado; nao ha leitura do cartao
-por scrape. Energia, bateria, sensores ambientais locais, reles, ADC e MQTT
-continuam sem integracao e nao geram zeros ficticios.
+por scrape. O sensor de som tem leitura ADC local para o display, mas ainda
+nao gera series Prometheus. Energia, bateria, sensores ambientais locais,
+reles, ADC generico e MQTT continuam sem metricas implementadas e nao geram
+zeros ficticios.
 Catalogo, limites e verificacao: [PROMETHEUS.md](PROMETHEUS.md).
 
 ### Preparacao da placa
@@ -78,8 +83,12 @@ Instalacao acima.
 
 ## Pinagem preservada
 
+Ligação completa do sensor, alimentação e diagrama do barramento:
+**[PINOUT.md](PINOUT.md)**. Os números abaixo são GPIOs, não posições no conector.
+
 | Recurso | GPIO |
 | --- | --- |
+| Sinal analógico do sensor de som RoboCore | 0 |
 | SPI SCLK | 7 |
 | SPI MOSI | 6 |
 | SD MISO | 5 |
@@ -115,12 +124,22 @@ A busca começa pelo último perfil conectado, quando conhecido, e percorre os c
 | 7 | Cartão SD |
 | 8 | Monitor de rede e gráfico de latência |
 | 9 | Previsão diária |
+| 10 | Som: equalizador de 12 faixas ou historico temporal, com ganho visual |
+
+O monitor de som (`tela:10`) captura continuamente via ADC/DMA e mostra um
+equalizador de 12 faixas por FFT, com ganho visual padrao de 32x. Ajuste com
+`som_ganho:1..64`; `som_modo:historico` mostra uma janela temporal de 9,6 segundos
+e `som_modo:equalizador` retorna as faixas de frequencia. Para o sensor analogico RoboCore, ligue
+VCC a 3V3, GND a GND e o sinal analogico ao GPIO0, com a placa desligada.
+Nao use alimentacao de 5 V nessa ligacao direta. A pagina de som nao volta
+automaticamente ao relogio nem entra no protetor enquanto selecionada;
+a reducao de brilho continua ativa. Detalhes: [COMANDOS.md](COMANDOS.md#páginas).
 
 - Pressão curta no **BOOT**: avança uma página.
 - Segure por 3 segundos e solte: reinicia.
 - Segure por 10 segundos e solte: limpa as redes salvas e reinicia. O firmware, os arquivos SD e o namespace `ntp_cfg` permanecem.
 
-As páginas voltam ao relógio após 30 segundos. Após 60 segundos sem botão ou comando serial/UDP, a proteção mostra um robô com dez expressões coloridas, piscadas e movimento suave; a tela não desliga automaticamente. As expressões mudam a cada 4,2 segundos. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
+As páginas voltam ao relógio após 30 segundos, exceto o monitor de som, que permanece aberto. Nas demais páginas, após 60 segundos sem botão ou comando serial/UDP, a proteção mostra um robô com dez expressões coloridas, piscadas e movimento suave; a tela não desliga automaticamente. As expressões mudam a cada 4,2 segundos. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
 
 As barrinhas usam o RSSI real: quatro acima de -60 dBm, três acima de -70, duas acima de -80 e uma acima de -90. Três/quatro são verdes, duas amarelas e uma vermelha. Não há animação artificial de sinal.
 
@@ -148,7 +167,7 @@ O diagnostico automatico fica em `/diagnostic.log`, com rotacao para `/diagnosti
 
 Um marcador em memoria RTC permite registrar `METRICS_INTERRUPTED` no boot seguinte se houve reset com consulta pendente. Isso nao garante recuperacao apos perda de alimentacao. `METRICS_END` significa que a chamada de envio retornou, e nao confirma o recebimento completo pelo Prometheus. Para investigar um `unexpected EOF`, consulte o diagnostico atual e o anterior, procurando reinicios, quedas de Wi-Fi, consultas sem fim e memoria baixa. O comando `crash_info` continua disponivel para arquivar um core dump de panic. O registro nao grava diretamente no SD dentro de um panic.
 
-Abra **http://IP_DA_PLACA/logs** ou clique em **Logs do SD** no portal. No AP de configuracao, use **http://192.168.4.1/logs**. A pagina permite selecionar `/log.txt`, `/network_history.log` e `/network_history.previous.log`, atualizar manualmente ou a cada 5 segundos e acompanhar as ultimas linhas. Cada consulta exibe ate 8 KiB do final do arquivo, sem alterar os registros. Logs de rede usam segundos desde o boot. SD indisponivel, arquivo ausente e erros de leitura aparecem na pagina.
+Abra **http://IP_DA_PLACA/logs** ou clique em **Logs do SD** no portal. No AP de configuracao, use **http://192.168.4.1/logs**. A pagina permite selecionar `/log.txt`, `/network_history.log`, `/network_history.previous.log`, `/diagnostic.log` e `/diagnostic.previous.log`, atualizar manualmente ou a cada 5 segundos e acompanhar as ultimas linhas. Cada consulta exibe ate 8 KiB do final do arquivo, sem alterar os registros. Logs de rede usam segundos desde o boot. SD indisponivel, arquivo ausente e erros de leitura aparecem na pagina.
 
 Console UDP: **4210**, limite de entrada **255 bytes**. Consulte [COMANDOS.md](COMANDOS.md) para sintaxe, limites e exemplos. O `help` corresponde à lista atualizada.
 
@@ -166,6 +185,13 @@ OTA usa hostname **ESP32-C6-Gateway** e é inicializada após conexão Wi-Fi. Po
 | `DisplayUtil.h/.cpp` | Páginas e backlight |
 | `SharedSpi.h` | Proteção compartilhada de SPI |
 | `NetworkMonitor.h/.cpp` | Ping, métricas e eventos |
+| `SoundMonitor.h/.cpp` | Sensor RoboCore no GPIO0, tarefa de captação e histórico temporal |
+| `MetricsService.h/.cpp` | Portal de configuração e exportador Prometheus |
+| `Diagnostics.h/.cpp` | Fila de diagnóstico e registros no SD |
+| `CrashDiagnostics.h/.cpp` | Leitura, arquivamento e limpeza condicional de core dump |
+| `RobotScreensaver.h` | Expressões e desenho vetorial do robô |
+| `SerialConsole.h` | Entrada de comandos por linha na serial |
+| `LogPortal.h` | Visualização web dos logs do cartão |
 | `PortalUi.h` | Layout HTML/CSS do portal |
 | `ClimaManager.h` | Consulta meteorológica e cache protegido |
 | `SDUtil.h/.cpp` | Operações no cartão |
@@ -173,11 +199,16 @@ OTA usa hostname **ESP32-C6-Gateway** e é inicializada após conexão Wi-Fi. Po
 | `OTAManager.h` | Atualização OTA |
 | `RGBLed.h/.cpp` | LED RGB |
 
-## Validação desta entrega
+## Validação e teste na placa
 
-Foram realizadas verificações estáticas de integração, presença de arquivos, correspondência entre comandos/help/documentação e integridade do pacote. **A compilação Arduino e os testes físicos não foram executados neste ambiente.**
+Esta revisão atualiza a documentação e confere referências locais, estrutura Markdown e correspondência com os fontes. Não executa compilação nem gravação do firmware e não substitui testes físicos da ligação. Consulte o [histórico](CHANGELOG.md) para distinguir alterações documentais de mudanças no código.
 
 Após gravar, confira: cadastrar e listar redes; reiniciar e confirmar persistência; desligar o roteador e verificar busca/AP; restabelecer a rede; abrir páginas 8/9; consultar `net_monitor`/`net_history`; testar SD e brilho; confirmar botão e OTA na placa. Se o PWM falhar, o firmware informa no serial e usa apenas iluminação ligada/desligada.
+
+Com o sensor RoboCore ligado conforme [PINOUT.md](PINOUT.md), abra `tela:10`,
+observe a resposta a sons no ambiente, acompanhe o eixo temporal e confira
+que a pagina permanece aberta por mais de 30/60 segundos. Saia pelo BOOT ou
+por comando e confirme o retorno ao comportamento normal de navegacao.
 
 ## Referências
 

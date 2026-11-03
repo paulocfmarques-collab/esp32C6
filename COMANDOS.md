@@ -1,6 +1,6 @@
 # Comandos — ESP32-C6 Gateway
 
-Revisão documental: **31/10/2026**. Histórico:
+Revisão documental: **02/11/2026** · [Pinout e ligação do sensor](PINOUT.md). Histórico:
 [CHANGELOG.md](CHANGELOG.md); [catálogo geral](../ESP32_Documents/COMANDOS.md).
 
 Referência do `CommandProcessor.cpp` desta atualização. Envie um comando de texto por datagrama UDP para a **porta 4210** do dispositivo. No AP de configuração, use `192.168.4.1`. O limite de entrada é **255 bytes** por comando, incluindo argumentos. Nomes de comando aceitam maiúsculas/minúsculas; SSID, senha e texto mantêm a capitalização.
@@ -84,7 +84,10 @@ Veja [PROMETHEUS.md](PROMETHEUS.md) para todas as metricas e limitacoes.
 
 | Comando | Função |
 | --- | --- |
-| `tela:N` | Seleciona a página 0 a 9; tabela abaixo. |
+| `tela:N` | Seleciona a página 0 a 10; tabela abaixo. |
+| `som_ganho:V` | Ganho visual de 1 a 64, padrao 32. Realca sinal e ruido, sem alterar o ganho eletrico do sensor. |
+| `som_modo:equalizador` | Mostra as 12 faixas reais de frequencia na pagina 10, modo padrao. |
+| `som_modo:historico` | Mostra o historico temporal de volume de 9,6 segundos na pagina 10. |
 | `tela_next` | Avança para a próxima página. |
 | `brilho:P` | Ajusta o backlight de 0 a 100%; padrão 80%. Usa PWM no GPIO 22. |
 | `tela_off` | Coloca o brilho em zero, mantendo processador e rede ativos. |
@@ -171,12 +174,49 @@ No portal, senha vazia preserva a senha anterior somente quando o SSID não muda
 | 7 | Cartão SD |
 | 8 | Monitor de rede e gráfico de latência |
 | 9 | Previsão diária |
+| 10 | Som: equalizador de 12 faixas ou historico temporal, com ganho ajustavel |
 
-As páginas de informações retornam ao relógio após 30 segundos. Respostas de comando usam a orientação original de console por 10 segundos. `tela:N` e `tela_next` abrem o painel imediatamente.
+O monitor de som abre com `tela:10` ou pelo BOOT. O sensor analogico de som da
+RoboCore fica configurado no GPIO0 (`SoundSensorConfig::ANALOG_PIN = 0` em
+`SoundMonitor.h`). Com a placa desligada, ligue VCC a 3V3, GND a GND e a saida
+de sinal analogico ao GPIO0. Nao alimente o sensor em 5 V nesta ligacao direta.
+
+Tabela de GPIOs e diagrama da ligação: **[PINOUT.md](PINOUT.md#ligação-do-sensor-de-som-robocore)**.
+O adaptador nao atende modulos somente digitais ou I2S. Use `ANALOG_PIN = -1`
+para desativar a leitura se o sensor nao estiver conectado; uma entrada solta
+pode produzir leituras sem significado.
+
+A captacao usa ADC continuo/DMA a 20 kHz em tarefa dedicada, inclusive fora
+da pagina. Uma FFT de 512 amostras remove o nivel DC e usa janela Hann para
+agrupar a energia em 12 faixas de aproximadamente 80 Hz a 10 kHz. A resolucao
+da FFT e aproximadamente 39 Hz. As barras segmentadas tem subida rapida,
+queda suave e marcador de pico. Ha compressao visual para destacar sons fracos.
+
+O ganho padrao e 32x; envie `som_ganho:64` para aumentar ou `som_ganho:8`
+para reduzir. O ganho e aplicado somente na visualizacao, antes da compressao
+do equalizador: nao altera o sinal eletrico nem melhora a relacao sinal/ruido.
+`ADC SATURADO` indica saturacao na entrada; reduza a intensidade do sinal,
+pois reduzir o ganho visual nao recupera uma amostra que ja saturou.
+
+Use `som_modo:historico` para o grafico temporal de 9,6 segundos, com ate 96
+pontos de amplitude pico a pico agrupados aproximadamente a cada 100 ms.
+O ganho tambem se aplica a esse grafico. `som_modo:equalizador` retorna as
+faixas de frequencia. Ganho e modo ficam em RAM e voltam a 32x/equalizador
+no boot. A tela atualiza aproximadamente a cada 100 ms. Nao ha valores
+simulados, gravacao de audio, medicao em decibeis ou calibracao de sonometro.
+
+A pagina de som permanece aberta enquanto selecionada, sem retorno automatico
+ao relogio nem entrada no protetor de tela. Use BOOT, `tela_next` ou `tela:N`
+para sair. A reducao automatica de brilho continua ativa.
+
+Referencias: [sensor RoboCore](https://www.robocore.net/sensor-ambiente/sensor-de-som-microfone)
+e [GPIO/ADC do ESP32-C6](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/gpio.html).
+
+As páginas de informações retornam ao relógio após 30 segundos, exceto o monitor de som. Respostas de comando usam a orientação original de console por 10 segundos. `tela:N` e `tela_next` abrem o painel imediatamente.
 
 ## Economia de iluminação
 
-Após 60 segundos sem botão ou comando serial/UDP, o protetor de robô roda continuamente, alternando dez expressões coloridas a cada 4,2 segundos, com piscadas e movimento suave. A tela não desliga automaticamente. Após 2 minutos, o backlight cai para no máximo 20%. Botão ou comando encerram o protetor e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
+Fora da página de som, após 60 segundos sem botão ou comando serial/UDP, o protetor de robô roda continuamente, alternando dez expressões coloridas a cada 4,2 segundos, com piscadas e movimento suave. A tela não desliga automaticamente. Após 2 minutos, o backlight cai para no máximo 20%, inclusive no monitor de som. Botão ou comando encerram o protetor e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
 
 ## Arquivos do histórico
 

@@ -8,6 +8,7 @@ class ESP32Gateway;
 class NTPUtil;
 class RGBLed;
 class SDUtil; // Encapsula o uso interno, sem herdar cabeçalhos antigos do SD.h
+class SoundMonitor;
 
 class CommandProcessor
 {
@@ -47,6 +48,7 @@ public:
                      RGBLed& led, SDUtil& sd);
 
     bool begin();
+    void setSoundMonitor(SoundMonitor* sound) { sound_ = sound; }
     bool sdReady() const { return sdReady_; }
     void executeCommand(String command, bool fromSerial = false);
     void update();
@@ -67,6 +69,7 @@ private:
     NTPUtil& ntp_;
     RGBLed& led_;
     SDUtil& sd_;
+    SoundMonitor* sound_ = nullptr;
 
     bool sdReady_ = false;
     bool serialReply_ = false;

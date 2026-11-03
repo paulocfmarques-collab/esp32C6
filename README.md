@@ -9,6 +9,8 @@
 Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com portal local, consoles serial/UDP,
 logs no microSD, clima de Porto Alegre e métricas para Prometheus e Grafana.
 
+Documentação revisada em **02/11/2026** · [Pinout e ligações](PINOUT.md)
+
 [![ESP32-C6](https://img.shields.io/badge/ESP32--C6-RISC--V-0f766e?style=flat-square)](#hardware)
 [![Arduino](https://img.shields.io/badge/Arduino_Core-ESP32_3.x-00878f?style=flat-square)](#primeiros-passos)
 [![C++](https://img.shields.io/badge/C%2B%2B-Firmware-2563eb?style=flat-square)](#arquitetura)
@@ -27,7 +29,7 @@ logs no microSD, clima de Porto Alegre e métricas para Prometheus e Grafana.
 
 | Conectar | Acompanhar | Investigar |
 | :--- | :--- | :--- |
-| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e dez páginas no display | Logs de comandos, rede e diagnóstico no SD |
+| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e onze páginas no display | Logs de comandos, rede e diagnóstico no SD |
 | Comandos por serial USB e UDP | Ping ao gateway e histórico de latência | Memória, reinícios e duração das consultas HTTP |
 | Portal local e atualização OTA | Exportador Prometheus e integração com Grafana | Consulta de core dump com `crash_info` |
 
@@ -98,7 +100,7 @@ para adicionar o alvo ao seu servidor Prometheus.
 ## Arquitetura
 
 O loop principal coordena a interface, os comandos e os serviços de rede.
-Clima, consultas do SD e escrita de diagnóstico têm tarefas próprias.
+Clima, captação de som, consultas do SD e escrita de diagnóstico têm tarefas próprias.
 Display, cartão e desenhos da OTA compartilham uma proteção de acesso ao SPI.
 
 ```mermaid
@@ -108,6 +110,7 @@ flowchart LR
         UDP["UDP · 4210"]
         WEB["Navegador · HTTP 80"]
         PROM["Prometheus"]
+        MIC["Sensor RoboCore · GPIO0"]
     end
     subgraph Firmware["ESP32-C6 Gateway"]
         LOOP["Loop principal"]
@@ -115,6 +118,7 @@ flowchart LR
         PORTAL["Portal local"]
         MET["MetricsService"]
         WEATHER["ClimaManager"]
+        SOUND["Captação contínua de som"]
         CACHE["Cache de clima e SD"]
         DISPLAY["Display e robô"]
         DIAG["Fila de diagnóstico"]
@@ -127,6 +131,8 @@ flowchart LR
     PROM -->|"GET /metrics"| MET
     LOOP --> DISPLAY
     LOOP --> WEATHER
+    MIC --> SOUND
+    SOUND --> DISPLAY
     WEATHER --> CACHE
     CACHE --> MET
     CMD --> SPI
@@ -294,6 +300,15 @@ sequenceDiagram
 | 1–2 | NTP e serviços | 6 | Perfis Wi-Fi |
 | 3–4 | Rede | 7 | Cartão SD |
 | 8 | Monitor de rede e latência | 9 | Previsão diária |
+| 10 | Monitor de som com gráfico e pico | — | — |
+
+O monitor de som (`tela:10`) usa o sensor analogico RoboCore no **GPIO0**, com
+VCC em **3V3** e GND comum. A captacao continua usa ADC/DMA e FFT para mostrar
+um **equalizador de 12 faixas**. O ganho visual padrao e **32x**, ajustavel com
+`som_ganho:1..64`. Use `som_modo:historico` para acompanhar os ultimos **9,6 segundos**
+ou `som_modo:equalizador` para retornar as frequencias. A pagina permanece aberta.
+A escala e visual, sem medicao em decibeis. Veja a
+[ligacao e os detalhes de leitura](COMANDOS.md#páginas) antes de conectar.
 
 | Ação no BOOT | Resultado |
 | :--- | :--- |
@@ -301,7 +316,7 @@ sequenceDiagram
 | Segurar por 3 segundos e soltar | Reiniciar |
 | Segurar por 10 segundos e soltar | Limpar redes salvas e reiniciar |
 
-Após **60 segundos de inatividade**, entra o robô animado. As expressões mudam
+Nas demais páginas, após **60 segundos de inatividade**, entra o robô animado. As expressões mudam
 a cada **4,2 segundos**. Após **2 minutos**, o brilho cai para no máximo 20%,
 sem desligar automaticamente a tela. Botão ou comando encerram a proteção.
 O brilho padrão é 80%; `tela_off` e `brilho:0` continuam disponíveis para desligamento manual.
@@ -360,6 +375,11 @@ Pinagem da **Waveshare ESP32-C6-LCD-1.47** usada neste projeto:
 | SD MISO | 5 | TFT reset | 21 |
 | SD CS | 4 | TFT backlight | 22 |
 | LED RGB | 8 | Botão BOOT | 9 |
+| Sensor de som RoboCore | 0 | — | — |
+
+Alimentação do sensor externo: **3V3 e GND**. Esses terminais não são GPIOs.
+
+**[Pinout completo, ligação do sensor e diagrama SPI → PINOUT.md](PINOUT.md)**
 
 O ST7789 usa offset de **34 pixels** e orientação paisagem nas páginas.
 O SD é inicializado antes do display. O mutex recursivo de [SharedSpi.h](SharedSpi.h)
@@ -375,6 +395,7 @@ Uma operação lenta no cartão ainda pode atrasar a interface.
 
 | Documento | Quando usar |
 | :--- | :--- |
+| [PINOUT.md](PINOUT.md) | GPIOs, alimentação, sensor RoboCore e barramento SPI |
 | [LEIA-ME.md](LEIA-ME.md) | Instalação detalhada, configuração e operação |
 | [COMANDOS.md](COMANDOS.md) | Referência completa de comandos serial/UDP |
 | [PROMETHEUS.md](PROMETHEUS.md) | Métricas, configuração da coleta e Grafana |
@@ -390,6 +411,7 @@ Uma operação lenta no cartão ainda pode atrasar a interface.
 | [ESP32Gateway.h](ESP32Gateway.h) | Perfis Wi-Fi, portal, UDP e histórico |
 | [CommandProcessor.cpp](CommandProcessor.cpp) | Validação, comandos e respostas |
 | [DisplayUtil.cpp](DisplayUtil.cpp) · [RobotScreensaver.h](RobotScreensaver.h) | Páginas, brilho e animações |
+| [SoundMonitor.h](SoundMonitor.h) · [SoundMonitor.cpp](SoundMonitor.cpp) | Captação de som contínua e histórico com timestamps |
 | [MetricsService.cpp](MetricsService.cpp) | Exportador e configuração Prometheus |
 | [NetworkMonitor.cpp](NetworkMonitor.cpp) | Ping assíncrono, latência e quedas |
 | [ClimaManager.h](ClimaManager.h) · [NTPUtil.cpp](NTPUtil.cpp) | Clima em cache e sincronização de horário |

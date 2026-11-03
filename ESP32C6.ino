@@ -19,10 +19,11 @@ NTPUtil ntp;
 SDUtil sd;
 CommandProcessor commandProcessor(display, gateway, ntp, rgbLed, sd);
 SerialConsole serialConsole;
+SoundMonitor soundMonitor;
 
 bool otaInicializadoCompleto = false;
 bool sdDisponivel = false;
-enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_COUNT };
+enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_SOUND, PAGE_COUNT };
 uint32_t tempoUltimoComando = 0; // Monitor de ociosidade
 
 void setup() 
@@ -37,6 +38,8 @@ void setup()
   // Coloca o cartao em modo SPI antes de enviar comandos ao LCD.
   sdDisponivel = commandProcessor.begin();
   Diagnostics::begin(sd);
+  soundMonitor.begin(SoundSensorConfig::ANALOG_PIN);
+  commandProcessor.setSoundMonitor(&soundMonitor);
   display.begin();
   display.setRotation(1); 
   display.clear();
@@ -249,7 +252,7 @@ void loop()
     sdBusy = sdReading;
     portEXIT_CRITICAL(&sdCacheMux);
     if (currentPage == PAGE_SD && sdBusy) statusPageShownAt = millis();
-    if (currentPage != 0 && millis() - statusPageShownAt >= 30000)
+    if (currentPage != 0 && currentPage != PAGE_SOUND && millis() - statusPageShownAt >= 30000)
     {
       currentPage = 0;
       display.clear();
@@ -262,7 +265,7 @@ void loop()
       lastClockUpdate = 0;
     }
     // A protecao continua animada enquanto o dispositivo estiver ocioso.
-    if (millis() - tempoUltimoComando > 60000 && !sdBusy)
+    if (millis() - tempoUltimoComando > 60000 && !sdBusy && currentPage != PAGE_SOUND)
     {
       if (!screensaverActive) {
         display.clear();
@@ -276,7 +279,7 @@ void loop()
       lastClockUpdate = 0;
     } 
     // Caso contrário, renderiza o painel completo atualizado de 1 em 1 segundo
-    else if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : 1000UL))
+    else if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : currentPage == PAGE_SOUND ? 100UL : 1000UL))
     {
       if (currentPage == 0)
       {
@@ -316,6 +319,7 @@ void loop()
       }
       else if (currentPage == PAGE_MONITOR) display.showMonitorPage();
       else if (currentPage == PAGE_FORECAST) display.showForecastPage();
+      else if (currentPage == PAGE_SOUND) display.showSoundPage(soundMonitor);
       else if (sdBusy)
       {
         sdLoadingShown = true;

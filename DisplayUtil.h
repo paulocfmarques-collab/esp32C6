@@ -5,6 +5,7 @@
 #include <Arduino_GFX_Library.h>
 #include <vector>
 #include "NetworkMonitor.h"
+#include "SoundMonitor.h"
 
 class DisplayUtil {
 private:
@@ -23,6 +24,8 @@ private:
     bool robotCanvasAttempted_ = false;
     uint32_t robotStartedAt_ = 0;
     int16_t robotPreviousX_ = -1, robotPreviousY_ = -1;
+    uint8_t soundLevels_[SoundMonitor::BAND_COUNT]{}, soundPeaks_[SoundMonitor::BAND_COUNT]{};
+    uint32_t soundPeakUntil_[SoundMonitor::BAND_COUNT]{};
     std::vector<String> lines;
     uint16_t textColor;
     uint16_t backgroundColor;
@@ -53,6 +56,7 @@ public:
     void clearConsole(){clear();}
     void showMonitorPage();
     void showForecastPage();
+    void showSoundPage(const SoundMonitor& sound);
     void clear();
     void setTextColor(uint16_t color);
     void setBackgroundColor(uint16_t color);

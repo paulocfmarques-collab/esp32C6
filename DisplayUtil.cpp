@@ -51,6 +51,9 @@ void DisplayUtil::clear() {
     statusPageInitialized = false;
     robotStartedAt_ = millis();
     robotPreviousX_ = robotPreviousY_ = -1;
+    for (uint8_t i = 0; i < SoundMonitor::BAND_COUNT; ++i) {
+        soundLevels_[i] = soundPeaks_[i] = 0; soundPeakUntil_[i] = 0;
+    }
     const bool wasRobotActive = robotCanvasAttempted_;
     // O buffer so ocupa RAM enquanto a protecao estiver em uso.
     delete robotCanvas_;
@@ -634,6 +637,83 @@ void DisplayUtil::drawPanelLine(int x, int y, uint8_t size, uint8_t columns,
     gfx->setCursor(x, y);
     gfx->print(line);
 }
+void DisplayUtil::showSoundPage(const SoundMonitor& sound) {
+    SharedSpi::Guard guard;
+    const auto state = sound.snapshot();
+    const uint32_t now = millis();
+    uint16_t bars[SoundMonitor::HISTORY_SIZE]{};
+    uint16_t peak = 0;
+    for (uint8_t i = 0; i < state.count; ++i) {
+        const uint32_t age = uint32_t(now - state.times[i]);
+        if (age >= SoundMonitor::HISTORY_MS) continue;
+        const uint8_t column = SoundMonitor::HISTORY_SIZE - 1 - age / SoundMonitor::WINDOW_MS;
+        if (state.values[i] > bars[column]) bars[column] = state.values[i];
+        if (state.values[i] > peak) peak = state.values[i];
+    }
+    if (!statusPageInitialized) {
+        gfx->fillScreen(backgroundColor);
+        drawPanelLine(8, 6, 2, 25, state.equalizer ? "EQUALIZADOR DE SOM" : "VOLUME NO TEMPO", COLOR_CYAN);
+        gfx->drawRoundRect(10, 68, 300, 76, 4, COLOR_GRAY);
+        statusPageInitialized = true;
+    }
+    if (!state.running) {
+        drawPanelLine(8, 32, 2, 25, state.pin < 0 ? "Sensor desativado" : "Falha ao iniciar sensor", 0xFFE0);
+        drawPanelLine(8, 50, 1, 50, "Verifique SoundMonitor.h e o diagnostico.", COLOR_GRAY);
+    } else {
+        char line[64];
+        if (state.updatedAt && uint32_t(now - state.updatedAt) < 1000) {
+            if (state.equalizer) snprintf(line, sizeof(line), "Ganho:%2ux  Nivel:%3u%%",
+                unsigned(state.gain), unsigned(min(100UL, state.latest * uint32_t(state.gain) * 100UL / 4095)));
+            else snprintf(line, sizeof(line), "G:%2ux N:%3u%% P:%3u%%", unsigned(state.gain),
+                unsigned(min(100UL, state.latest * uint32_t(state.gain) * 100UL / 4095)),
+                unsigned(min(100UL, peak * uint32_t(state.gain) * 100UL / 4095)));
+            drawPanelLine(8, 32, 2, 25, line, COLOR_WHITE);
+        } else drawPanelLine(8, 32, 2, 25, "Aguardando amostras...", 0xFFE0);
+        snprintf(line, sizeof(line), "GPIO%d | %s | %s", state.pin,
+            state.equalizer ? "12 faixas / 80 Hz a 10 kHz" : "historico / 9,6 s",
+            state.clipped ? "ADC SATURADO" : "sem dB");
+        drawPanelLine(8, 50, 1, 50, line, COLOR_GRAY);
+    }
+    if (state.equalizer) {
+        const bool fresh = state.running && state.updatedAt && uint32_t(now - state.updatedAt) < 1000;
+        for (uint8_t band = 0; band < SoundMonitor::BAND_COUNT; ++band) {
+            float level = fresh ? state.bands[band] * state.gain / 2047.5f : 0;
+            if (level > 1) level = 1;
+            // Compressao visual para destacar sinais fracos; nao representa dB.
+            const uint8_t target = uint8_t(sqrtf(level) * 60);
+            uint8_t& height = soundLevels_[band];
+            if (target >= height) height = target;
+            else height = height > target + 3 ? height - 3 : target;
+            if (height >= soundPeaks_[band]) {
+                soundPeaks_[band] = height; soundPeakUntil_[band] = now + 700;
+            } else if (int32_t(now - soundPeakUntil_[band]) >= 0) {
+                soundPeaks_[band] = soundPeaks_[band] > 2 ? soundPeaks_[band] - 2 : 0;
+            }
+            const int x = 18 + band * 24;
+            gfx->fillRect(x, 74, 20, 5, backgroundColor);
+            for (uint8_t segment = 0; segment < 12; ++segment) {
+                uint16_t color = segment >= 9 ? COLOR_MAGENTA : segment >= 6 ? 0xFFE0 : COLOR_GREEN;
+                if (height < segment * 5 + 1) color = backgroundColor;
+                gfx->fillRect(x, 135 - segment * 5, 20, 4, color);
+                gfx->drawFastHLine(x, 134 - segment * 5, 20, backgroundColor);
+            }
+            if (soundPeaks_[band]) gfx->drawFastHLine(x, 137 - soundPeaks_[band], 20, COLOR_WHITE);
+        }
+        drawPanelLine(10, 151, 1, 50, "GRAVES            MEDIOS              AGUDOS", COLOR_GRAY);
+        return;
+    }
+    // Historico preservado como modo alternativo, com o mesmo ganho visual.
+    for (uint8_t i = 0; i < SoundMonitor::HISTORY_SIZE; ++i) {
+        const int x = 16 + i * 3;
+        const uint16_t value = bars[i];
+        const int height = int(min(4095UL, value * uint32_t(state.gain)) * 64UL / 4095);
+        const uint16_t color = value > 3071 ? 0xF800 : value > 1638 ? 0xFFE0 : COLOR_CYAN;
+        if (height) gfx->fillRect(x, 138 - height, 2, height, color);
+        if (height < 64) gfx->fillRect(x, 74, 2, 64 - height, backgroundColor);
+    }
+    drawPanelLine(10, 151, 1, 50, "-9,6 s                -4,8 s             agora", COLOR_GRAY);
+}
+
 void DisplayUtil::showMonitorPage(){
  SharedSpi::Guard guard;if(!monitor_)return;const auto& m=*monitor_;
  if(!statusPageInitialized){gfx->fillScreen(backgroundColor);drawPanelLine(8,6,2,25,"MONITOR DE REDE",COLOR_CYAN);statusPageInitialized=true;}

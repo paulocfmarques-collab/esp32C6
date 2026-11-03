@@ -1,5 +1,14 @@
 # Changelog
 
+Documentação revisada em **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+
+## 2026-11-02
+
+- Monitor de som passa a usar ADC continuo/DMA a 20 kHz e FFT de 512 pontos para equalizador real de 12 faixas. Ganho visual padrao 32x, ajustavel por `som_ganho:1..64`, barras segmentadas com pico e modo temporal preservado via `som_modo:historico`. Sem biblioteca FFT externa ou gravacao de audio.
+- Criado `PINOUT.md` com GPIOs, alimentação, pinos reservados e diagramas de ligação do sensor e do SPI. Revisados os guias Markdown do projeto para refletir o monitor de som contínuo, exceções de navegação, métricas disponíveis e referências cruzadas.
+- Sensor RoboCore preparado no GPIO0, alimentado em 3V3: captacao continua em tarefa dedicada, grafico com timestamps numa janela de 9,6 segundos e pagina mantida aberta sem retorno automatico ou protetor. Limite de memoria fixo e sem gravacao de audio.
+- Pagina 10 para monitor de som, com grafico colorido de ate 96 pontos e pico de amplitude relativa. Integrada ao BOOT, `tela:10` e `help`; a preparacao inicial da entrada desativada foi substituida pela captacao continua RoboCore no GPIO0 descrita acima. Sem valores simulados ou escala de decibeis.
+
 ## 2026-10-23
 
 - Contadores `sdcard_log_records_total` e `sdcard_log_errors_total` para logs de comandos, rede e diagnostico, com label `device` compativel com `esp_info` e consultas Grafana documentadas.
