@@ -499,6 +499,7 @@ uint64_t SDUtil::getUsedBytes(bool* valid)
 uint64_t SDUtil::getUsedBytesCooperative(bool* valid)
 {
     if (valid) *valid = false;
+    const uint32_t startedAt = millis();
     uint32_t clusters, firstFat, sectorsPerCluster, generation;
     uint8_t fatType;
     {
@@ -509,7 +510,7 @@ uint64_t SDUtil::getUsedBytesCooperative(bool* valid)
         fatType = sdCard.vol()->fatType();
         // A contagem por setores abaixo e exclusiva de FAT16/FAT32.
         if (fatType != 16 && fatType != 32)
-            return getUsedBytes(valid);
+            return 0; // Nao inicia uma varredura bloqueante para outros formatos.
         clusters = sdCard.vol()->clusterCount();
         firstFat = sdCard.vol()->fatStartSector();
         sectorsPerCluster = sdCard.vol()->sectorsPerCluster();
@@ -521,6 +522,11 @@ uint64_t SDUtil::getUsedBytesCooperative(bool* valid)
     // Pula as entradas reservadas 0 e 1; cada leitura libera o SPI para o LCD.
     for (uint32_t cluster = 2; cluster < clusters + 2;)
     {
+        if (millis() - startedAt >= 15000UL)
+        {
+            Serial.println("[SD] Consulta de espaco excedeu 15 segundos.");
+            return 0;
+        }
         const uint32_t sectorIndex = cluster / entriesPerSector;
         {
             SharedSpi::Guard spiGuard;
@@ -549,7 +555,9 @@ uint64_t SDUtil::getUsedBytesCooperative(bool* valid)
                 ++freeClusters;
             ++cluster;
         }
-        vTaskDelay(1);
+        // Libera o SPI a cada setor, mas dorme apenas a cada oito setores.
+        // Um tick por setor tornava a contagem de FATs grandes muito lenta.
+        if ((sectorIndex & 7U) == 0) vTaskDelay(1);
     }
     if (valid) *valid = true;
     return uint64_t(clusters - freeClusters) * sectorsPerCluster * 512ULL;

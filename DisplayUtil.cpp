@@ -470,7 +470,7 @@ void DisplayUtil::showSdLoading(uint8_t frame) {
     gfx->fillRoundRect(cx - 92 + frame * 9, 120, 45, 5, 2, COLOR_CYAN);
 }
 void DisplayUtil::showSdPage(bool sdReady, const String& cardType,
-                             uint64_t totalBytes, uint64_t usedBytes) {
+                             uint64_t totalBytes, uint64_t usedBytes, bool usedValid) {
     SharedSpi::Guard spiGuard;
     gfx->setRotation(1);
     if (!statusPageInitialized) {
@@ -500,6 +500,10 @@ void DisplayUtil::showSdPage(bool sdReady, const String& cardType,
             String(usagePercent) + "%)",
         String("Livre: ") + String(static_cast<unsigned long>(freeMiB)) + " MiB"
     };
+    if (!usedValid || !sdReady) {
+        lines[3] = "Usado: nao calculado";
+        lines[4] = "Livre: nao calculado";
+    }
 
     gfx->setTextSize(2);
     for (uint8_t i = 0; i < 5; i++) {

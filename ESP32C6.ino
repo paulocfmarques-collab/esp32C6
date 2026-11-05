@@ -9,6 +9,7 @@
 #include <WiFi.h>
 #include "SerialConsole.h"
 #include "Diagnostics.h"
+#include <esp_timer.h>
 
 constexpr uint8_t USER_BUTTON_PIN = 9; // Botao BOOT onboard da Waveshare ESP32-C6-LCD-1.47
 
@@ -62,6 +63,7 @@ struct SdInfoCache
   char type[24] = "--";
   uint64_t total = 0;
   uint64_t used = 0;
+  bool usedValid = false;
 };
 SdInfoCache sdInfo;
 bool sdReading = false;
@@ -70,13 +72,22 @@ bool sdLoadingShown = false;
 
 void sdInfoTask(void*)
 {
+  Diagnostics::event("SD_INFO_START");
   { // Libera a String local antes de encerrar a tarefa FreeRTOS.
   SdInfoCache next;
   String type = sd.getCardType();
   strncpy(next.type, type.c_str(), sizeof(next.type) - 1);
   next.type[sizeof(next.type) - 1] = '\0';
   next.total = sd.getCardSizeBytes();
-  next.used = sd.getUsedBytesCooperative();
+  const SdMetricsSnapshot cached = sd.metricsSnapshot();
+  if (cached.valid && cached.mounted &&
+      esp_timer_get_time() - cached.updatedUs < 30000000LL)
+  {
+    next.used = cached.used;
+    next.usedValid = true;
+  }
+  else next.used = sd.getUsedBytesCooperative(&next.usedValid);
+  Diagnostics::event(next.usedValid ? "SD_INFO_READY" : "SD_INFO_SPACE_UNAVAILABLE");
   portENTER_CRITICAL(&sdCacheMux);
   sdInfo = next; sdReading = false;
   portEXIT_CRITICAL(&sdCacheMux);
@@ -97,6 +108,7 @@ void startSdRead()
   sdLoadingShown = true;
   if (xTaskCreate(sdInfoTask, "sdinfo", 4096, NULL, 1, NULL) != pdPASS)
   {
+    Diagnostics::event("SD_INFO_TASK_FAILED");
     portENTER_CRITICAL(&sdCacheMux); sdReading = false; portEXIT_CRITICAL(&sdCacheMux);
   }
 }
@@ -334,7 +346,7 @@ void loop()
           sdLoadingShown = false;
         }
         display.showSdPage(sdDisponivel, sdDisponivel ? String(sdSnapshot.type) : "--",
-                           sdSnapshot.total, sdSnapshot.used);
+                           sdSnapshot.total, sdSnapshot.used, sdSnapshot.usedValid);
       }      lastClockUpdate = millis();
     }
   }

@@ -2,6 +2,10 @@
 
 Documentação revisada em **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
 
+## 2026-11-03
+
+- Tela SD reutiliza estatisticas recentes das metricas e limita a varredura FAT a 15 segundos entre leituras. SPI continua liberado a cada setor, com pausa da tarefa a cada oito setores. Em falha ou limite excedido, mostra tipo/capacidade e espaco "nao calculado", sem representar falha como zero usado. Eventos `SD_INFO_START`, `SD_INFO_READY`, `SD_INFO_SPACE_UNAVAILABLE` e `SD_INFO_TASK_FAILED` no diagnostico. O limite nao interrompe uma operacao de hardware ja em andamento.
+
 ## 2026-11-02
 
 - Monitor de som passa a usar ADC continuo/DMA a 20 kHz e FFT de 512 pontos para equalizador real de 12 faixas. Ganho visual padrao 32x, ajustavel por `som_ganho:1..64`, barras segmentadas com pico e modo temporal preservado via `som_modo:historico`. Sem biblioteca FFT externa ou gravacao de audio.

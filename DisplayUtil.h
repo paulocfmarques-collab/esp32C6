@@ -72,7 +72,7 @@ public:
     void showSavedWifiPage(const String ssids[5], int connectedSlot, uint8_t nextSlot);
     void showHoldMessage(const String& line1, const String& line2, uint16_t color);
     void showSdPage(bool sdReady, const String& cardType, uint64_t totalBytes,
-                    uint64_t usedBytes);
+                    uint64_t usedBytes, bool usedValid = true);
     void desenharRobotScreensaver();
     void dispararAnimacaoGravacaoSD(); 
     
