@@ -4,7 +4,8 @@
 #include <freertos/task.h>
 #include <esp_adc/adc_continuous.h>
 
-// RoboCore analogico: VCC em 3V3, GND comum, sinal em GPIO0.
+// Sensor analogico RoboCore ativo no GPIO0. INMP441 ainda pendente.
+// Adaptador legado: VCC em 3V3, GND comum, sinal em GPIO0 (GPIO3 reservado ao DHT22).
 // Use -1 para desativar a leitura quando o sensor nao estiver conectado.
 namespace SoundSensorConfig { constexpr int ANALOG_PIN = 0; }
 

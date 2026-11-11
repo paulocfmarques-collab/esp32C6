@@ -170,7 +170,7 @@ class ESP32Gateway
         h += infoRow("Flash", String(ESP.getFlashChipSize() / 1024 / 1024) + " MB");
         h += infoRow("Console UDP", String(C6NetworkConfig::UDP_PORT));
         h += infoRow("SD",
-                     sd.getCardSizeBytes() > 0 ? String("Disponível") : String("Indisponível"));
+                     !sd.enabled() ? String("Desativado") : sd.getCardSizeBytes() > 0 ? String("Disponível") : String("Indisponível"));
         h += F("</article><article class='card'><h2>Redes salvas</h2>");
         String names[5], pass[5];
         int idx;
@@ -450,7 +450,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
         telemetry.update();
         server.handleClient();
         metrics.process();
-        if (historyEnabled &&
+        if (sd.enabled() && historyEnabled &&
             (!historySeen || historyOnline != telemetry.connected ||
              (telemetry.hasResult &&
               (!historyMeasured || historyPingAt != telemetry.measuredAt))) &&
@@ -612,10 +612,10 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
         }
     }
 
-    void responderUDP(const String& s)
+    bool responderUDP(const String& s)
     {
         if (!udp.remoteIP())
-            return;
+            return false;
         const IPAddress remote = udp.remoteIP();
         const uint16_t port = udp.remotePort();
         size_t offset = 0;
@@ -635,6 +635,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
         } while (offset < s.length());
         metrics.recordUdpReply(sent);
         if (!sent) Diagnostics::event("UDP_SEND_ERROR", "begin_write_or_end_failed=1");
+        return sent;
     }
 
     void responderUDPPrintf(const char* format, ...)
@@ -706,9 +707,9 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
         return checarMensagensUDP(s);
     }
 
-    void sendMessage(String s)
+    bool sendMessage(const String& s)
     {
-        responderUDP(s);
+        return responderUDP(s);
     }
 
     void clearConfig()
@@ -742,7 +743,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
             s += "\nRTT min/medio/max: " + String(m.minimum) + "/" +
                  String((unsigned long)(m.totalRtt / m.received)) + "/" + String(m.maximum) + " ms";
         s += "\nPings: " + String(m.attempts) + " | Sem resposta: " + String(m.failures) + "\n";
-        s += historyFailed ? "Historico SD: indisponivel ou falha\n" : "Historico SD: ativo\n";
+        s += !sd.enabled() ? "Historico SD: desativado\n" : historyFailed ? "Historico SD: indisponivel ou falha\n" : "Historico SD: ativo\n";
         for (const auto& e : m.events)
             if (e.length())
                 s += e + "\n";

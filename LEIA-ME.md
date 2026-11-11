@@ -1,8 +1,14 @@
 # ESP32-C6 Gateway — LEIA-ME
 
-Revisão documental: **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+**Perfil atual: SD desativado neste dispositivo** (`DeviceConfig::SDCARD_ENABLED = false`
+em [DeviceConfig.h](DeviceConfig.h)). Nenhuma tentativa de montagem ou tarefa de
+gravacao/estatisticas e iniciada. Comandos SD, inclusive formatacao, ficam bloqueados;
+portal e display indicam desativacao. Sensores, tela, serial e Prometheus continuam.
+`crash_info` envia o relatorio e limpa o panic interno apos envio bem-sucedido, sem arquivar no cartao.
 
-Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de 172 × 320 pixels, LED RGB e microSD. Reúne console serial/UDP, portal de configuração, cinco redes Wi-Fi, NTP, clima, monitor de conexão, métricas Prometheus e monitor de som RoboCore no GPIO0.
+Revisão documental: **05/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+
+Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de 172 × 320 pixels, LED RGB e microSD. Reúne console serial/UDP, portal de configuração, cinco redes Wi-Fi, NTP, clima, monitor de conexão, métricas Prometheus e sensor local DHT22/AM2302 no GPIO3. A captura de som analogico esta ativa no GPIO0; o INMP441 ainda nao esta implementado.
 
 Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecidos. Não é o firmware do ESP32-C3 com tela de 1,44 polegada.
 
@@ -16,7 +22,8 @@ Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecid
 - Previsão diária separada: mínima, máxima e probabilidade máxima de chuva do dia.
 - Portal responsivo com informações do dispositivo e edição dos cinco perfis; senhas salvas não são enviadas ao navegador.
 - Backlight PWM ajustável, redução automática após inatividade e novos comandos documentados no `help`.
-- Captação de som RoboCore no GPIO0, em tarefa dedicada, com gráfico temporal na página 10 e sem gravação de áudio.
+- Interface renovada: relogio com ambiente local, cabecalhos comuns e pagina 11 com temperatura, umidade e tendencia DHT22. Pagina 9 mantem os dados externos de Porto Alegre.
+- Leitura DHT22 em tarefa dedicada a cada 2,5 s, com deteccao de falhas, disponibilidade, idade e erros nas metricas. Som analogico ativo no GPIO0.
 
 ## Instalação
 
@@ -29,10 +36,10 @@ sugerido ficam salvos em Preferences/NVS `telemetry`. O Prometheus coleta
 e aplique no servidor. A porta muda sem reboot e e restaurada apos reiniciar.
 
 Sao exportadas metricas reais de sistema, Wi-Fi, CPU, memoria, GPIO, HTTP,
-temperatura interna, temperatura e umidade de Porto Alegre, idade do clima, UDP e SD. O cache SD e atualizado em tarefa
+temperatura interna, temperatura e umidade de Porto Alegre e do DHT22 local (origens distintas), idade das leituras, UDP e SD. O cache SD e atualizado em tarefa
 a cada 30 segundos, preservando o SPI compartilhado; nao ha leitura do cartao
 por scrape. O sensor de som tem leitura ADC local para o display, mas ainda
-nao gera series Prometheus. Energia, bateria, sensores ambientais locais,
+nao gera series Prometheus. Energia, bateria,
 reles, ADC generico e MQTT continuam sem metricas implementadas e nao geram
 zeros ficticios.
 Catalogo, limites e verificacao: [PROMETHEUS.md](PROMETHEUS.md).
@@ -42,7 +49,7 @@ Catalogo, limites e verificacao: [PROMETHEUS.md](PROMETHEUS.md).
 1. Extraia o pacote e mantenha todos os fontes juntos na pasta `ESP32C6`.
 2. Abra `ESP32C6.ino` na Arduino IDE.
 3. Instale o pacote **esp32 by Espressif Systems 3.x**, com suporte ao ESP32-C6.
-4. Instale **Arduino_GFX_Library**, **Adafruit NeoPixel** e **SdFat 2.x**. Wi-Fi, HTTP, Preferences, NTP e ArduinoOTA vêm do core.
+4. Instale **Arduino_GFX_Library**, **Adafruit NeoPixel** e **SdFat 2.x**. O leitor DHT22 agora e integrado, com limite de tempo por captura e pausa durante OTA. Wi-Fi, HTTP, Preferences, NTP e ArduinoOTA vêm do core.
 5. Selecione a placa ESP32-C6 correspondente ao seu hardware e uma partição com suporte a OTA. Compile, escolha a porta USB e grave.
 6. Abra o monitor serial em **115200 baud**.
 
@@ -88,7 +95,8 @@ Ligação completa do sensor, alimentação e diagrama do barramento:
 
 | Recurso | GPIO |
 | --- | --- |
-| Sinal analógico do sensor de som RoboCore | 0 |
+| DATA do sensor local DHT22/AM2302 | 3 |
+| Som analogico RoboCore | 0 |
 | SPI SCLK | 7 |
 | SPI MOSI | 6 |
 | SD MISO | 5 |
@@ -114,7 +122,7 @@ A busca começa pelo último perfil conectado, quando conhecido, e percorre os c
 
 | Número | Página |
 | --- | --- |
-| 0 | Relógio, clima atual e sinal Wi-Fi |
+| 0 | Relogio, temperatura e umidade locais |
 | 1 | NTP e serviços — parte 1 |
 | 2 | NTP e serviços — parte 2 |
 | 3 | Rede — parte 1 |
@@ -123,10 +131,11 @@ A busca começa pelo último perfil conectado, quando conhecido, e percorre os c
 | 6 | Cinco redes salvas |
 | 7 | Cartão SD |
 | 8 | Monitor de rede e gráfico de latência |
-| 9 | Previsão diária |
-| 10 | Som: equalizador de 12 faixas ou historico temporal, com ganho visual |
+| 9 | Porto Alegre: clima externo e previsao diaria |
+| 10 | Som: equalizador e historico no GPIO0 |
+| 11 | Ambiente local DHT22: temperatura, umidade e tendencia |
 
-O monitor de som (`tela:10`) captura continuamente via ADC/DMA e mostra um
+A captura de som (`tela:10`) esta ativa no GPIO0 (`ANALOG_PIN = 0`), usa ADC/DMA e mostra um
 equalizador de 12 faixas por FFT, com ganho visual padrao de 32x. Ajuste com
 `som_ganho:1..64`; `som_modo:historico` mostra uma janela temporal de 9,6 segundos
 e `som_modo:equalizador` retorna as faixas de frequencia. Para o sensor analogico RoboCore, ligue
@@ -139,9 +148,9 @@ a reducao de brilho continua ativa. Detalhes: [COMANDOS.md](COMANDOS.md#páginas
 - Segure por 3 segundos e solte: reinicia.
 - Segure por 10 segundos e solte: limpa as redes salvas e reinicia. O firmware, os arquivos SD e o namespace `ntp_cfg` permanecem.
 
-As páginas voltam ao relógio após 30 segundos, exceto o monitor de som, que permanece aberto. Nas demais páginas, após 60 segundos sem botão ou comando serial/UDP, a proteção mostra um robô com dez expressões coloridas, piscadas e movimento suave; a tela não desliga automaticamente. As expressões mudam a cada 4,2 segundos. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
+As páginas voltam ao relógio após 30 segundos, exceto o monitor de som e a pagina local DHT22, que permanecem abertos. Nas demais páginas, após 60 segundos sem botão ou comando serial/UDP, a proteção mostra um robô com dez expressões coloridas, piscadas e movimento suave; a tela não desliga automaticamente. As expressões mudam a cada 4,2 segundos. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
 
-As barrinhas usam o RSSI real: quatro acima de -60 dBm, três acima de -70, duas acima de -80 e uma acima de -90. Três/quatro são verdes, duas amarelas e uma vermelha. Não há animação artificial de sinal.
+O relogio mostra o estado do Wi-Fi e os dados locais; RSSI detalhado permanece nas paginas de rede. O DHT22 funciona mesmo sem Wi-Fi ou sincronizacao NTP.
 
 ## Monitor de rede e SD
 
@@ -165,7 +174,7 @@ Para mudar a cidade, altere latitude, longitude e fuso na URL de `ClimaManager.h
 
 O diagnostico automatico fica em `/diagnostic.log`, com rotacao para `/diagnostic.previous.log` a partir de 256 KiB. Selecione **Diagnostico** ou **Diagnostico anterior** em `/logs`. Registra `BOOT` (motivo do reset e versao), `SETUP_READY`, `HEARTBEAT` a cada minuto, desconexoes Wi-Fi com codigo de motivo, inicio/fim do robo e `METRICS_START` / `METRICS_END` com numero da consulta, tamanho gerado, duracao e estado do cliente. Cada linha inclui uptime, memoria livre, minimo de memoria e maior bloco disponivel. A gravacao e sincronizada por uma tarefa separada com fila limitada; descartes e falhas de escrita aparecem no heartbeat quando o cartao volta a responder.
 
-Um marcador em memoria RTC permite registrar `METRICS_INTERRUPTED` no boot seguinte se houve reset com consulta pendente. Isso nao garante recuperacao apos perda de alimentacao. `METRICS_END` significa que a chamada de envio retornou, e nao confirma o recebimento completo pelo Prometheus. Para investigar um `unexpected EOF`, consulte o diagnostico atual e o anterior, procurando reinicios, quedas de Wi-Fi, consultas sem fim e memoria baixa. O comando `crash_info` continua disponivel para arquivar um core dump de panic. O registro nao grava diretamente no SD dentro de um panic.
+Um marcador em memoria RTC permite registrar `METRICS_INTERRUPTED` no boot seguinte se houve reset com consulta pendente. Isso nao garante recuperacao apos perda de alimentacao. `METRICS_END` significa que a chamada de envio retornou, e nao confirma o recebimento completo pelo Prometheus. Para investigar um `unexpected EOF`, consulte o diagnostico atual e o anterior, procurando reinicios, quedas de Wi-Fi, consultas sem fim e memoria baixa. O comando `crash_info` envia o core dump de panic pelo console e limpa o registro interno apos envio bem-sucedido, sem arquivar no SD. O registro nao grava diretamente no SD dentro de um panic.
 
 Abra **http://IP_DA_PLACA/logs** ou clique em **Logs do SD** no portal. No AP de configuracao, use **http://192.168.4.1/logs**. A pagina permite selecionar `/log.txt`, `/network_history.log`, `/network_history.previous.log`, `/diagnostic.log` e `/diagnostic.previous.log`, atualizar manualmente ou a cada 5 segundos e acompanhar as ultimas linhas. Cada consulta exibe ate 8 KiB do final do arquivo, sem alterar os registros. Logs de rede usam segundos desde o boot. SD indisponivel, arquivo ausente e erros de leitura aparecem na pagina.
 

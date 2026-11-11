@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <esp_timer.h>
 #include "Diagnostics.h"
+#include "WeatherSecureClient.h"
 
 struct ClimaSnapshot
 {
@@ -61,7 +62,7 @@ class ClimaManager
     {
         Snapshot next = snapshot();
         bool currentOk = false, dailyOk = false;
-        NetworkClientSecure client;
+        WeatherSecureClient client;
         client.setInsecure();
         HTTPClient http;
         http.setReuse(false);
@@ -72,7 +73,16 @@ class ClimaManager
                           "forecast?latitude=-30.03&longitude=-51.23&current=temperature_2m,"
                           "relative_humidity_2m,weather_code&daily=temperature_2m_min,temperature_2m_max,precipitation_"
                           "probability_max&forecast_days=1&timezone=America%2FSao_Paulo";
-        if (http.begin(client, url) && http.GET() == HTTP_CODE_OK)
+        int status = 0;
+        if (http.begin(client, url))
+        {
+            Diagnostics::event("WEATHER_HTTP_START");
+            status = http.GET();
+            char detail[40];
+            snprintf(detail, sizeof(detail), "status=%d", status);
+            Diagnostics::event("WEATHER_HTTP_END", detail);
+        }
+        if (status == HTTP_CODE_OK)
         {
             String payload = http.getString();
             int pos = payload.indexOf("\"current\":");

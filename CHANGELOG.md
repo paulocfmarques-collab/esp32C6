@@ -1,6 +1,45 @@
 # Changelog
 
-Documentação revisada em **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+Documentação revisada em **05/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+
+## 2026-11-06
+
+- `crash_info` deixa de arquivar no SD: leitura e limpeza separadas, relatorio enviado antes de apagar o core dump interno. Serial confere bytes e flush; UDP confere todos os blocos enviados. Falha de leitura, reserva de memoria ou envio preserva o registro. Resultado da limpeza informado no console. SD continua desativado; sem compilacao ou gravacao.
+
+- SD desativado no perfil deste dispositivo em `DeviceConfig.h`: protecao em todas as entradas de arquivo, montagem e formatacao, sem tarefa de diagnostico SD ou estatisticas, historico de rede suspenso. CS4 permanece inativo para preservar o SPI da tela. Portal/display/comandos informam desativacao; autoteste marca SKIP; panic interno preservado. `sdcard_enabled=0` explicita o estado no Prometheus.
+- Adicionadas `sensor_local_temperature_celsius` e `sensor_local_humidity_percent` com `device`, `location="local"` e `sensor="dht22"`, seguindo ESP32C3Mini. NaN em leitura invalida; aliases locais anteriores preservados e dados Open-Meteo mantidos separados. Sem compilacao ou gravacao.
+
+- Diagnostico isolado v3: apos v2 informado com falha no setor 2048 em todas as velocidades, adicionados CSD/OCR brutos e comparacao CMD17 direta com argumento por setor/byte, CRC7 e verificacao CRC16. Continua sem escrita e nao altera o modo de enderecamento no principal. CRC7 validado com vetores CMD0=0x95 e CMD8=0x87; sem compilacao ou teste fisico.
+
+- Apos falha repetida em READ_VOLUME_BOOT no principal (antes dos demais drivers), partida SD replica o caminho de leitura do isolado: encerra estado anterior, reabre SPI, 16 bytes de clocks, espera de 250 ms por tentativa e cinco leituras de setor zero/boot do volume com hash e intervalos de 20 ms. Backlight mantido apagado ate inicializacao do display. Divergencia de conteudo cancela montagem; sem escrita de diagnostico ou formatacao automatica. Causa ainda nao confirmada; teste de integracao pendente.
+
+- Resultado do teste isolado informado pelo usuario: leitura repetida, FAT16 e listagem passaram a 400 kHz sem formatar. Corrigido erro do diagnostico v1: `card.end()` encerrava SPI antes das rodadas seguintes sem reabrir; v2 chama SPI.begin apos cada end, portanto falhas posteriores do v1 nao comprovam incompatibilidade de frequencia. Firmware principal passa a usar SdFs explicito, espera inicial ate 3 s e tentativa inicial a 400 kHz, seguida de 100 kHz/2 MHz. Integracao ainda pendente de teste pelo usuario.
+
+- Criado `diagnosticos/SD_Leitura_Isolada`: sketch separado sem Wi-Fi, OTA ou drivers dos demais perifericos. CSD, cinco leituras repetidas do setor zero e boot do volume com hash, montagem e ate dez entradas da raiz em O_RDONLY. Tres velocidades e resumo por tentativa; sem escrita ou formatacao. Preparado para compilacao e teste pelo usuario.
+
+- Reativada a captura de som analogico RoboCore no GPIO0, mantendo DHT22 no GPIO3. Equalizador e historico disponiveis em `tela:10`; INMP441/I2S ainda nao implementado. Sem compilacao ou gravacao.
+
+- `sd_status` diferencia volume montado de estatisticas indisponiveis: consulta cooperativa com flag de validade e tamanho util do volume, sem converter falha em zero usado/livre. Capacidade fisica reaproveita o CSD validado na montagem; tela SD tambem identifica total indisponivel em vez de 0 MiB. Sem formatacao automatica.
+
+## 2026-11-05
+
+- Adicionado `sd_format:APAGAR_TUDO`, somente serial USB: inicializacao fisica independente da montagem anterior, FAT16/FAT32 via FatFormatter, buffer de 512 bytes, progresso com cessao de CPU, sincronizacao e verificacao de remontagem. SPI reservado e sensor pausado. Rejeita chamadas UDP e argumentos diferentes; nao ha formatacao automatica nem repeticao de escrita em falha. Implementado a pedido explicito do usuario; nao executado no cartao, compilacao e gravacao a cargo do usuario.
+
+- Apos INT_WDT durante OTA, leitura DHT22 substituida por captura GPIO open-drain com limite real de 120 us por pulso e 6 ms totais; erro encerra imediatamente a captura. Checksum, conversao e validacao fora da secao critica. OTA pausa o sensor antes do desenho inicial e retoma apos erro; em sucesso aguarda reboot. Watchdogs preservados; bibliotecas externas DHT deixam de ser necessarias. Causa exata do panic nao confirmada por ELF correspondente; correcao pendente de compilacao e teste.
+
+- Montagem SD identifica FAT diretamente no setor 0 e entradas MBR com limites de capacidade validados. Usa inicio explicito para layouts reconhecidos; registra particoes, BPB e falha de leitura do boot do volume separadamente. Nao altera tabela de particoes ou formato. Compatibilidade pendente de teste no cartao da placa.
+
+- Inicializacao SD separada em CARD_BEGIN, READ_CSD, READ_SECTOR_0 e VOLUME_BEGIN, com ate tres tentativas (dados em 2 MHz, 400 kHz e 100 kHz). Diagnostico serial identifica a etapa e o erro de cada tentativa; a frequencia selecionada segue nas metricas. Tentativas de inicializacao e verificacoes nao escrevem nem formatam; logs normais voltam apos montagem bem-sucedida.
+
+- SD: detalha `READ_TIMEOUT` (`0x1E`) no boot e em respostas de estado. `appendText` exige montagem bem-sucedida antes de abrir arquivos, evitando tentativa de gravacao apos `begin()` falhar. Sem formatacao nem mudanca de frequencia SPI.
+
+- Diagnostico: `sensor_local` consulta o DHT22; `selftest` inclui leitura local e montagem SD, sem escrita de teste. Falha de montagem retorna os codigos do ultimo `begin()` tambem na resposta serial/UDP. `crash_info` identifica o relatorio como persistido, possivelmente de execucao anterior.
+- Banner serial no inicio do setup identifica motivo/codigo do reset atual, data de compilacao e etapas de inicializacao, mesmo sem SD. Nao apaga o panic persistido.
+
+- DHT22/AM2302 local em GPIO3/3V3: biblioteca Adafruit, tarefa de 2,5 s, validacao de intervalo/checksum, estado e historico de 48 tentativas com lacunas em falhas. Pagina 11 persistente, relogio com ambiente local, cabecalhos padronizados e pagina Porto Alegre separada. Metricas locais com `source="dht22",location="local"`, idade, disponibilidade e erros. Som analogico desativado (`ANALOG_PIN=-1`) apos retirada do RoboCore; INMP441 ainda pendente. Sem compilacao ou gravacao nesta revisao.
+
+
+- Consulta HTTPS do clima usa `WeatherSecureClient` com DNS via `lwip_getaddrinfo`, evitando `Network.hostByName()` e a limpeza de cache DNS sem lock do core 3.3.12, associada ao assert `udp_new_ip_type` na tarefa weather quando ha callbacks NTP pendentes. Host HTTP e SNI TLS preservados, inclusive em redirecionamentos. Eventos `WEATHER_DNS_*` e `WEATHER_HTTP_*` identificam as etapas e o status HTTP. Sem alteracao dos arquivos do core instalado. Correcao pendente de compilacao e teste na placa.
 
 ## 2026-11-03
 

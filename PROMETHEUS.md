@@ -1,6 +1,6 @@
 # Prometheus - ESP32-C6 Gateway
 
-Revisão documental: **02/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Operação](LEIA-ME.md)
+Revisão documental: **05/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Operação](LEIA-ME.md)
 
 ## Configuracao web e portas
 
@@ -105,8 +105,8 @@ quando a placa opera como AP. Informacao textual usa gauge com valor 1 e labels.
 | CPU | `esp_task_count` | Quantidade atual de tarefas FreeRTOS. |
 | CPU adicional | `esp_cpu_temperature_celsius` | Temperatura interna do chip via `temperatureRead()`, somente quando finita; nao e sensor ambiental. |
 | Clima adicional | `esp_weather_data_age_seconds` | Segundos desde a ultima atualizacao valida dos dados atuais Open-Meteo. |
-| Clima | `sensor_temperature_celsius` | Gauge da temperatura do ar em Porto Alegre, em Celsius, obtida do Open-Meteo; labels `source="open_meteo"` e `location="porto_alegre"`, alem de `device`. |
-| Clima | `sensor_humidity_percent` | Gauge da umidade relativa do ar em Porto Alegre, de 0 a 100%, obtida do Open-Meteo; mesmos labels de origem e localizacao. |
+| Clima | `sensor_temperature_celsius` | Gauge da temperatura do ar em Celsius: Open-Meteo/Porto Alegre ou DHT22/local; na origem externa, labels `source="open_meteo"` e `location="porto_alegre"`, alem de `device`. |
+| Clima | `sensor_humidity_percent` | Gauge da umidade relativa de 0 a 100%, externa ou local; na origem externa, mesmos labels de origem e localizacao. |
 | Memoria | `esp_heap_free_bytes` | Heap livre. |
 | Memoria | `esp_heap_total_bytes` | Heap total. |
 | Memoria | `esp_heap_minimum_free_bytes` | Menor heap livre desde boot. |
@@ -145,7 +145,7 @@ quando a placa opera como AP. Informacao textual usa gauge com valor 1 e labels.
 
 Mantida a pinagem da **Waveshare ESP32-C6-LCD-1.47 sem Touch**:
 SCLK **7**, MOSI **6**, MISO **5**, CS **4**, em SPI compartilhado com TFT.
-Montagem SdFat a **2 MHz**, sem formatacao automatica.
+Montagem SdFs/SdFat com ate tres tentativas: dados a **400 kHz**, **100 kHz** e **2 MHz**, nessa ordem, sem formatacao automatica. O diagnostico serial identifica a etapa de falha (inicializacao, CSD, setor 0 ou volume).
 
 As coletas HTTP leem somente um cache numerico protegido por secao critica.
 Uma tarefa `sdmetrics`, com pilha de 4096 bytes, atualiza esse cache a cada
@@ -163,7 +163,7 @@ pausar o display enquanto o SPI esta ocupado.
 | `sdcard_used_bytes` | gauge | Espaco ocupado na area de clusters. |
 | `sdcard_free_bytes` | gauge | Total menos usado. |
 | `sdcard_usage_percent` | gauge | 100 * usado / total, com total positivo e usado <= total. |
-| `sdcard_spi_frequency_hz` | gauge | Clock de montagem configurado, 2000000 Hz. |
+| `sdcard_spi_frequency_hz` | gauge | Limite de clock de dados selecionado na montagem: 2000000, 400000 ou 100000 Hz; nao e medicao eletrica. |
 | `sdcard_data_age_seconds` | gauge | Idade monotona em segundos do ultimo cache de espaco valido. |
 | `sdcard_log_size_bytes` | gauge | Tamanho de cada log existente e legivel; label `file`: `/log.txt`, `/network_history.log`, `/network_history.previous.log`. |
 | `sdcard_append_operations_total` | counter | Chamadas `appendText` gravadas e sincronizadas com sucesso desde boot; inclui comandos, rede e outros arquivos. |
@@ -228,13 +228,11 @@ a cada 15 minutos, sem consultar a API durante a coleta de `/metrics`.
 
 ## Sensor de som e GPIO0
 
-O sensor analógico de som RoboCore está configurado no **GPIO0** e alimentado
-em **3V3**; veja [PINOUT.md](PINOUT.md#ligação-do-sensor-de-som-robocore). A tarefa
+O sensor analogico RoboCore usa **GPIO0** e **3V3**, com captura ativa (`ANALOG_PIN = 0`); veja [PINOUT.md](PINOUT.md#ligação-do-sensor-de-som-robocore). A tarefa
 de captação alimenta o equalizador de 12 faixas da página **10**, com ganho
 visual ajustável e histórico temporal alternativo de 9,6 segundos. Não há uma série Prometheus de som
 implementada, nem exportação dessa leitura como `gpio_analog_value` ou decibéis.
-As séries de temperatura e umidade continuam sendo dados do Open-Meteo de
-Porto Alegre, identificados pelos labels de origem e localização.
+As series de temperatura e umidade distinguem Open-Meteo/Porto Alegre e DHT22/local pelos labels de origem e localizacao; veja a secao do DHT22 abaixo.
 
 ## Compilacao e teste na placa
 
@@ -269,3 +267,41 @@ Roteiro:
     sucesso e preservada apos falha de consulta.
 11. Aplique o YAML no servidor e confira `up{job="esp32_c6"} == 1`; desligue
     o ESP e confirme `up == 0`.
+
+## Perfil atual: SD desativado e DHT22 compativel com ESP32C3Mini
+
+`sdcard_enabled=0`, `sdcard_mounted=0` e `sdcard_metrics_available=0` indicam a
+desativacao deliberada. Nao ha tarefa de consulta ou escrita no cartao. Os
+contadores SD ficam em zero sem inventar tentativas/erros; capacidades, espaco e
+tamanhos de logs nao sao publicados. Os demais grupos continuam ativos.
+
+Mesmos nomes e labels usados em `ESP32C3Mini/ServicoPrometheus.cpp`:
+
+```promql
+sensor_local_temperature_celsius{location="local",sensor="dht22"}
+sensor_local_humidity_percent{location="local",sensor="dht22"}
+```
+
+Ambas sao gauges com label `device` (MAC), sem label `source`, como no C3Mini.
+Publicam `NaN` enquanto nao houver leitura atual valida; nao substituem falha
+por zero. `esp_metric_supported{group="dht22"}=1` indica suporte, e
+`esp_local_sensor_up` indica saude da leitura. As series de Porto Alegre mantem
+`source="open_meteo",location="porto_alegre"`. Os aliases locais anteriores
+`sensor_temperature_celsius`/`sensor_humidity_percent` com `source="dht22"`
+continuam publicados apenas com leitura valida, para preservar paineis existentes.
+
+## Sensor ambiental local DHT22
+
+O sensor no GPIO3 usa as mesmas familias de temperatura/umidade, com origem distinta:
+
+```promql
+sensor_temperature_celsius{source="dht22",location="local"}
+sensor_humidity_percent{source="dht22",location="local"}
+esp_local_sensor_up{source="dht22",location="local"}
+esp_local_sensor_data_age_seconds{source="dht22",location="local"}
+esp_local_sensor_read_errors_total{source="dht22",location="local"}
+```
+
+Todas incluem `device` (MAC), permitindo os filtros existentes do Grafana. `esp_local_sensor_up` vale 1 somente com tarefa ativa, ultima tentativa bem-sucedida e leitura com menos de 10 s. Temperatura e umidade locais sao omitidas durante falha ou atraso; nao sao substituidas por zero. A idade so existe apos a primeira leitura valida; o contador de erros reinicia no boot. Leitura a cada 2,5 s em tarefa propria; `/metrics` apenas consulta o cache.
+
+O clima externo continua com `source="open_meteo",location="porto_alegre"`. Filtre `source` para nao misturar ambiente local, internet e temperatura interna do chip.

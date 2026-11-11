@@ -1,6 +1,7 @@
 #include "MetricsService.h"
 #include "CommandProcessor.h"
 #include "ClimaManager.h"
+#include "LocalSensor.h"
 #include "SDUtil.h"
 #include "Diagnostics.h"
 #include "PortalUi.h"
@@ -362,12 +363,30 @@ String MetricsService::exposition() const
     const float temperature = temperatureRead();
     if (isfinite(temperature)) sample("esp_cpu_temperature_celsius", String(temperature, 2));
     const auto weather = ClimaManager::snapshot();
-    if (weather.sincronizado) {
-        const String weatherLabels = "source=\"open_meteo\",location=\"porto_alegre\"";
+    const auto local = localSensor.snapshot();
+    const bool localReady = local.fresh() && !local.lastFailed;
+    const String weatherLabels = "source=\"open_meteo\",location=\"porto_alegre\"";
+    const String localLabels = "source=\"dht22\",location=\"local\"";
+    // Mesmos nomes e labels do projeto ESP32C3Mini; NaN quando nao ha leitura atual.
+    const String sensorLabels = "location=\"local\",sensor=\"dht22\"";
+    sample("sensor_local_temperature_celsius", localReady ? String(local.temperature, 2) : String("NaN"), sensorLabels);
+    sample("sensor_local_humidity_percent", localReady ? String(local.humidity, 2) : String("NaN"), sensorLabels);
+    sample("esp_metric_supported", "1", "group=\"dht22\"");
+    if (weather.sincronizado)
         sample("sensor_temperature_celsius", String(weather.temperatura, 2), weatherLabels);
+    if (localReady)
+        sample("sensor_temperature_celsius", String(local.temperature, 2), localLabels, "gauge", !weather.sincronizado);
+    if (weather.sincronizado)
         sample("sensor_humidity_percent", String(weather.umidade, 2), weatherLabels);
+    if (localReady)
+        sample("sensor_humidity_percent", String(local.humidity, 2), localLabels, "gauge", !weather.sincronizado);
+    if (weather.sincronizado) {
         sample("esp_weather_data_age_seconds", String((esp_timer_get_time() - weather.ultimaAtualizacaoUs) / 1000000.0, 3));
     }
+    sample("esp_local_sensor_up", localReady ? "1" : "0", localLabels);
+    sample("esp_local_sensor_read_errors_total", String(local.errors), localLabels, "counter");
+    if (local.valid)
+        sample("esp_local_sensor_data_age_seconds", String((esp_timer_get_time() - local.updatedUs) / 1000000.0, 3), localLabels);
     sample("esp_task_count", String(uxTaskGetNumberOfTasks()));
     sample("esp_free_rtos_tasks", String(uxTaskGetNumberOfTasks()));
     sample("esp_heap_free_bytes", String(ESP.getFreeHeap()));
@@ -382,6 +401,7 @@ String MetricsService::exposition() const
     sample("application_errors_total", String(errors), "", "counter");
     sample("application_response_time_ms", String(responseMs, 3));
     const auto card = storage->metricsSnapshot();
+    sample("sdcard_enabled", storage->enabled() ? "1" : "0");
     sample("sdcard_mounted", card.mounted ? "1" : "0");
     sample("sdcard_metrics_available", card.valid ? "1" : "0");
     sample("sdcard_append_operations_total", String(card.appends), "", "counter");
@@ -395,7 +415,7 @@ String MetricsService::exposition() const
         sample("sdcard_used_bytes", String(card.used));
         sample("sdcard_free_bytes", String(card.total - card.used));
         if (card.total) sample("sdcard_usage_percent", String(100.0 * card.used / card.total, 3));
-        sample("sdcard_spi_frequency_hz", "2000000");
+        sample("sdcard_spi_frequency_hz", String(card.spiHz));
         sample("sdcard_data_age_seconds", String((esp_timer_get_time() - card.updatedUs) / 1000000.0, 3));
         bool describeLog = true;
         for (size_t i = 0; i < 3; ++i)

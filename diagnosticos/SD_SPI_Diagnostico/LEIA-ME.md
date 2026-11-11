@@ -1,5 +1,9 @@
 # Teste isolado do SD
 
+Para o teste completo atual (CSD, setores repetidos, montagem e listagem somente
+de leitura), use **[SD_Leitura_Isolada](../SD_Leitura_Isolada/LEIA-ME.md)**.
+Este sketch antigo continua limitado ao CMD0.
+
 Revisão documental: **02/11/2026** · [Início](../../README.md) · [Pinout](../../PINOUT.md) · [Operação](../../LEIA-ME.md)
 
 ## Relação com o sensor de som

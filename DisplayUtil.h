@@ -16,6 +16,7 @@ private:
     void applyBacklight(uint8_t level);
     void drawPanelLine(int x, int y, uint8_t size, uint8_t columns,
                        const String& text, uint16_t color);
+    void drawPageHeader(const char* title, const char* section);
     bool backlightReady_=false,powerSleeping_=false;
     uint32_t lastActivity_=0;
     int requestedPage_=-1;
@@ -56,6 +57,7 @@ public:
     void clearConsole(){clear();}
     void showMonitorPage();
     void showForecastPage();
+    void showLocalSensorPage();
     void showSoundPage(const SoundMonitor& sound);
     void clear();
     void setTextColor(uint16_t color);

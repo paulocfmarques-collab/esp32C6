@@ -10,6 +10,8 @@
 #include "SerialConsole.h"
 #include "Diagnostics.h"
 #include <esp_timer.h>
+#include <esp_system.h>
+#include "LocalSensor.h"
 
 constexpr uint8_t USER_BUTTON_PIN = 9; // Botao BOOT onboard da Waveshare ESP32-C6-LCD-1.47
 
@@ -24,21 +26,33 @@ SoundMonitor soundMonitor;
 
 bool otaInicializadoCompleto = false;
 bool sdDisponivel = false;
-enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_SOUND, PAGE_COUNT };
+enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_SOUND, PAGE_LOCAL, PAGE_COUNT };
 uint32_t tempoUltimoComando = 0; // Monitor de ociosidade
 
 void setup() 
 {
   Serial.begin(115200);
   delay(100); 
+  const esp_reset_reason_t reset = esp_reset_reason();
+  const char* resetName = reset == ESP_RST_PANIC ? "PANIC" :
+      reset == ESP_RST_TASK_WDT ? "TASK_WDT" : reset == ESP_RST_INT_WDT ? "INT_WDT" :
+      reset == ESP_RST_WDT ? "WDT" : reset == ESP_RST_BROWNOUT ? "BROWNOUT" :
+      reset == ESP_RST_POWERON ? "POWERON" : reset == ESP_RST_SW ? "SOFTWARE" : "OUTRO";
+  Serial.printf("\n[BOOT] reset=%s code=%d build=%s %s | DHT22 GPIO3\n",
+      resetName, int(reset), __DATE__, __TIME__);
   pinMode(USER_BUTTON_PIN, INPUT_PULLUP);
+  // Mesmo estado eletrico inicial do teste SD isolado; display.begin liga depois.
+  pinMode(22, OUTPUT); digitalWrite(22, LOW);
 
   pinMode(4, OUTPUT); digitalWrite(4, HIGH);
   pinMode(14, OUTPUT); digitalWrite(14, HIGH);
   SharedSpi::begin();
   // Coloca o cartao em modo SPI antes de enviar comandos ao LCD.
+  Serial.println(sd.enabled() ? "[BOOT] Inicializando SD..." : "[BOOT] SD desativado por configuracao.");
   sdDisponivel = commandProcessor.begin();
   Diagnostics::begin(sd);
+  localSensor.begin();
+  Serial.println("[BOOT] Leitura local iniciada; preparando display...");
   soundMonitor.begin(SoundSensorConfig::ANALOG_PIN);
   commandProcessor.setSoundMonitor(&soundMonitor);
   display.begin();
@@ -78,7 +92,7 @@ void sdInfoTask(void*)
   String type = sd.getCardType();
   strncpy(next.type, type.c_str(), sizeof(next.type) - 1);
   next.type[sizeof(next.type) - 1] = '\0';
-  next.total = sd.getCardSizeBytes();
+  next.total = sd.getVolumeSizeBytes();
   const SdMetricsSnapshot cached = sd.metricsSnapshot();
   if (cached.valid && cached.mounted &&
       esp_timer_get_time() - cached.updatedUs < 30000000LL)
@@ -264,7 +278,7 @@ void loop()
     sdBusy = sdReading;
     portEXIT_CRITICAL(&sdCacheMux);
     if (currentPage == PAGE_SD && sdBusy) statusPageShownAt = millis();
-    if (currentPage != 0 && currentPage != PAGE_SOUND && millis() - statusPageShownAt >= 30000)
+    if (currentPage != 0 && currentPage != PAGE_SOUND && currentPage != PAGE_LOCAL && millis() - statusPageShownAt >= 30000)
     {
       currentPage = 0;
       display.clear();
@@ -277,7 +291,7 @@ void loop()
       lastClockUpdate = 0;
     }
     // A protecao continua animada enquanto o dispositivo estiver ocioso.
-    if (millis() - tempoUltimoComando > 60000 && !sdBusy && currentPage != PAGE_SOUND)
+    if (millis() - tempoUltimoComando > 60000 && !sdBusy && currentPage != PAGE_SOUND && currentPage != PAGE_LOCAL)
     {
       if (!screensaverActive) {
         display.clear();
@@ -332,6 +346,7 @@ void loop()
       else if (currentPage == PAGE_MONITOR) display.showMonitorPage();
       else if (currentPage == PAGE_FORECAST) display.showForecastPage();
       else if (currentPage == PAGE_SOUND) display.showSoundPage(soundMonitor);
+      else if (currentPage == PAGE_LOCAL) display.showLocalSensorPage();
       else if (sdBusy)
       {
         sdLoadingShown = true;

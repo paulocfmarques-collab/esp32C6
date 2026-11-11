@@ -1,9 +1,15 @@
 #pragma once
+#include "DeviceConfig.h"
 #include "PortalUi.h"
 
 static String logPortalPage()
 {
     String h = portalStart("Logs do SD", false, false, true);
+    if (!DeviceConfig::SDCARD_ENABLED) {
+        h += "<section class='card'><h1>SD desativado</h1><p>Os logs em cartao estao suspensos neste dispositivo. Sensores, tela, console serial e Prometheus continuam ativos.</p></section>";
+        h += portalEnd();
+        return h;
+    }
     h += F(R"LOGPAGE(
 <style>.log-controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.log-controls select{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--border);padding:10px;border-radius:9px;max-width:100%}.log-view{height:55vh;min-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.65 ui-monospace,Consolas,monospace;background:#080f1b;padding:18px;border-radius:10px;border:1px solid var(--border)}.nav{flex-wrap:wrap}</style>
 <div class='top'><div><div class='eyebrow'>Cartão SD</div><h1>Logs do dispositivo</h1><p class='muted'>Acompanhe os registros de comandos e conexão.</p></div><button id='refresh' type='button'>Atualizar agora</button></div>

@@ -3,9 +3,11 @@
 #include <SPI.h>
 #include <time.h>
 #include <esp_timer.h>
+#include "FatLib/FatFormatter.h"
 
 bool SDUtil::appendDiagnostic(const char* record)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     if (!mounted_ || !record) return recordLogWrite(false);
     const char* current = "/diagnostic.log";
@@ -28,6 +30,7 @@ bool SDUtil::appendDiagnostic(const char* record)
 
 SdMetricsSnapshot SDUtil::metricsSnapshot()
 {
+    if (!enabled()) { return {}; }
     portENTER_CRITICAL(&metricsMux);
     SdMetricsSnapshot copy = metrics;
     portEXIT_CRITICAL(&metricsMux);
@@ -40,6 +43,7 @@ SdMetricsSnapshot SDUtil::metricsSnapshot()
 
 void SDUtil::processMetrics()
 {
+    if (!enabled()) { return; }
     const uint32_t now = millis();
     portENTER_CRITICAL(&metricsMux);
     const bool start = !metricsBusy && (!metricsAttempted || now - metricsAttemptAt >= 30000UL);
@@ -68,15 +72,17 @@ void SDUtil::metricsTask(void* context)
 
 void SDUtil::refreshMetrics()
 {
+    if (!enabled()) { return; }
     SdMetricsSnapshot next;
     uint32_t generation;
     {
         SharedSpi::Guard spiGuard;
         generation = mountGeneration;
         next.mounted = mounted_;
+        next.spiHz = spiHz_;
         if (mounted_ && sdCard.card() && sdCard.vol())
         {
-            next.capacity = uint64_t(sdCard.card()->sectorCount()) * 512ULL;
+            next.capacity = capacityBytes_;
             next.total = uint64_t(sdCard.vol()->clusterCount()) *
                          sdCard.vol()->sectorsPerCluster() * 512ULL;
             for (size_t i = 0; i < 3; ++i)
@@ -112,6 +118,7 @@ void SDUtil::refreshMetrics()
 
 bool SDUtil::salvarCrash(const String& relatorio, String& caminho, String& erro)
 {
+    if (!enabled()) { caminho = ""; erro = "SD desativado neste dispositivo"; return false; }
     SharedSpi::Guard spiGuard;
     caminho = "";
     erro = "";
@@ -188,10 +195,54 @@ bool SDUtil::salvarCrash(const String& relatorio, String& caminho, String& erro)
     return true;
 }
 
+namespace {
+uint16_t sdLe16(const uint8_t* p) {
+    return uint16_t(p[0]) | (uint16_t(p[1]) << 8);
+}
+uint32_t sdLe32(const uint8_t* p) {
+    return uint32_t(p[0]) | (uint32_t(p[1]) << 8) |
+        (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+}
+bool sdLooksLikeFatBoot(const uint8_t* p, uint32_t capacity) {
+    const uint32_t total = sdLe16(p + 19) ? sdLe16(p + 19) : sdLe32(p + 32);
+    return p[510] == 0x55 && p[511] == 0xAA &&
+        (p[0] == 0xEB || p[0] == 0xE9) && sdLe16(p + 11) == 512 &&
+        p[13] && p[13] <= 128 && !(p[13] & (p[13] - 1)) &&
+        sdLe16(p + 14) && (p[16] == 1 || p[16] == 2) &&
+        total && total <= capacity && (sdLe16(p + 22) || sdLe32(p + 36));
+}
+template<typename Card>
+bool sdReadStartupSector(Card* card, uint32_t lba, uint8_t* sector, const char* label) {
+    uint32_t expected = 0;
+    for (uint8_t i = 0; i < 5; ++i) {
+        if (!card->readSector(lba, sector)) {
+            Serial.printf("[SD] %s LBA=%lu repeticao=%u: falha de leitura\n",
+                label, (unsigned long)lba, unsigned(i + 1));
+            return false;
+        }
+        uint32_t hash = 2166136261UL;
+        for (uint16_t n = 0; n < 512; ++n) hash = (hash ^ sector[n]) * 16777619UL;
+        Serial.printf("[SD] %s LBA=%lu repeticao=%u hash=%08lX\n",
+            label, (unsigned long)lba, unsigned(i + 1), (unsigned long)hash);
+        if (i && hash != expected) {
+            Serial.println("[SD] Conteudo mudou entre leituras sem escrita; montagem cancelada.");
+            return false;
+        }
+        expected = hash;
+        delay(20); // Mesmo espacamento do diagnostico isolado que passou.
+    }
+    return true;
+}
+} // namespace
+
 bool SDUtil::begin()
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     ++mountGeneration;
+    // Replica a espera inicial do diagnostico que passou. Nao repete no uso normal.
+    const uint32_t bootMs = millis();
+    if (bootMs < 3000UL) delay(3000UL - bootMs);
     // 1. Configura e força o pino CS da tela (14) a ficar em HIGH (Desativada)
     pinMode(14, OUTPUT);
     digitalWrite(14, HIGH);
@@ -202,29 +253,108 @@ bool SDUtil::begin()
     delay(250); // Aguarda a alimentacao do cartao estabilizar no boot.
 
     // O SD inicia antes do display e define os pinos do SPI compartilhado.
+    sdCard.end();
     SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+    Serial.println("[SD] Perfil isolado: 5 leituras por setor, intervalo 20 ms.");
 
-    // Clocks de partida com ambos os CS altos e MOSI em HIGH.
-    SPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-    for (uint8_t i = 0; i < 10; ++i)
-        SPI.transfer(0xFF);
-    SPI.endTransaction();
-
-    // 4. Inicializa o cartão usando a velocidade de 2MHz (ideal para cartões de 1GB antigos em
-    // barramento compartilhado) Usamos o modo SHARED_SPI para que a biblioteca saiba que divide
-    // espaço com o display Impede a SdFat de iniciar outro SPI ou aplicar pinos padrao da placa.
-    SdSpiConfig configSD(SD_CS, SHARED_SPI | USER_SPI_BEGIN, SD_SCK_MHZ(2), &SPI);
-
-    bool resultado = sdCard.begin(configSD);
+    bool resultado = false;
+    uint32_t selectedHz = 0;
+    uint64_t selectedCapacity = 0;
+    // Tentativas limitadas, sem modificar arquivos ou formatar o cartao.
+    // Separa reset, registradores, leitura fisica e montagem para localizar a falha.
+    const uint32_t rates[] = {400000UL, 100000UL, 2000000UL};
+    uint8_t sector[512];
+    for (uint8_t attempt = 0; attempt < 3 && !resultado; ++attempt)
+    {
+        digitalWrite(14, HIGH);
+        digitalWrite(SD_CS, HIGH);
+        delay(250);
+        SPI.beginTransaction(SPISettings(100000, MSBFIRST, SPI_MODE0));
+        for (uint8_t i = 0; i < 16; ++i) SPI.transfer(0xFF);
+        SPI.endTransaction();
+        Serial.printf("[SD] Tentativa %u/3: dados ate %lu Hz\n", unsigned(attempt + 1), (unsigned long)rates[attempt]);
+        SdSpiConfig config(SD_CS, SHARED_SPI | USER_SPI_BEGIN, rates[attempt], &SPI);
+        uint32_t capacity = 0;
+        initStage_ = "CARD_BEGIN";
+        bool ok = sdCard.cardBegin(config);
+        if (ok) {
+            Serial.println("[SD] CARD_BEGIN OK; lendo CSD...");
+            initStage_ = "READ_CSD";
+            csd_t csd;
+            ok = sdCard.card()->readCSD(&csd);
+            if (ok) capacity = csd.capacity();
+        }
+        if (ok) {
+            Serial.println("[SD] CSD OK; lendo setor 0...");
+            initStage_ = "READ_SECTOR_0";
+            ok = sdReadStartupSector(sdCard.card(), 0, sector, "SETOR_0");
+        }
+        if (ok) {
+            Serial.printf("[SD] Setor 0 OK; capacidade=%lu setores assinatura=%02X%02X\n",
+                (unsigned long)capacity, unsigned(sector[511]), unsigned(sector[510]));
+            bool explicitStart = sdLooksLikeFatBoot(sector, capacity);
+            uint32_t start = 0;
+            if (explicitStart) Serial.println("[SD] FAT direto no setor 0 (sem tabela MBR).");
+            else if (sector[510] == 0x55 && sector[511] == 0xAA) {
+                // Valida a tabela antes de seguir enderecos de particao.
+                for (uint8_t part = 0; part < 4; ++part) {
+                    const uint8_t* entry = sector + 446 + part * 16;
+                    const uint32_t first = sdLe32(entry + 8), count = sdLe32(entry + 12);
+                    Serial.printf("[SD] MBR p%u tipo=0x%02X inicio=%lu setores=%lu\n",
+                        unsigned(part + 1), unsigned(entry[4]), (unsigned long)first, (unsigned long)count);
+                    const bool supported = entry[4] == 0x01 || entry[4] == 0x04 || entry[4] == 0x06 ||
+                        entry[4] == 0x0B || entry[4] == 0x0C || entry[4] == 0x0E || entry[4] == 0x07;
+                    if (!explicitStart && supported && (entry[0] == 0 || entry[0] == 0x80) &&
+                        first && first < capacity && count && count <= capacity - first) {
+                        explicitStart = true;
+                        start = first;
+                    }
+                }
+                if (explicitStart) {
+                    initStage_ = "READ_VOLUME_BOOT";
+                    Serial.printf("[SD] Lendo boot do volume no setor %lu...\n", (unsigned long)start);
+                    ok = sdReadStartupSector(sdCard.card(), start, sector, "BOOT_VOLUME");
+                }
+            }
+            if (ok) {
+                if (explicitStart) {
+                    Serial.printf("[SD] BPB: bytes/setor=%u setores/cluster=%u FATs=%u reservados=%u\n",
+                        unsigned(sdLe16(sector + 11)), unsigned(sector[13]), unsigned(sector[16]), unsigned(sdLe16(sector + 14)));
+                    initStage_ = "VOLUME_BEGIN_EXPLICIT";
+                    ok = sdCard.vol()->begin(sdCard.card(), true, 0, start);
+                } else {
+                    Serial.println("[SD] Layout nao identificado; usando montagem automatica.");
+                    initStage_ = "VOLUME_BEGIN";
+                    ok = sdCard.volumeBegin();
+                }
+            }
+        }
+        initError_ = sdCard.sdErrorCode();
+        initErrorData_ = sdCard.sdErrorData();
+        digitalWrite(SD_CS, HIGH);
+        if (ok) {
+            resultado = true;
+            selectedHz = rates[attempt];
+            selectedCapacity = uint64_t(capacity) * 512ULL;
+            initStage_ = "READY";
+            Serial.printf("[SD] Volume montado; SPI ate %lu Hz.\n", (unsigned long)selectedHz);
+        } else Serial.printf("[SD] Falha etapa=%s SdError=0x%02X,0x%02X\n",
+            initStage_, unsigned(initError_), unsigned(initErrorData_));
+    }
     mounted_ = resultado;
+    spiHz_ = selectedHz;
+    capacityBytes_ = selectedCapacity;
     portENTER_CRITICAL(&metricsMux);
     metrics.mounted = resultado;
     metrics.valid = false;
+    metrics.spiHz = selectedHz;
     portEXIT_CRITICAL(&metricsMux);
     if (!resultado)
     {
         Serial.println("[SD] Falha ao inicializar: SCLK=7 MISO=5 MOSI=6 CS=4");
         sdCard.initErrorPrint(&Serial);
+        if (initError_ == SD_CARD_ERROR_READ_TIMEOUT)
+            Serial.println("[SD] READ_TIMEOUT: aguardando inicio dos dados. Nao confirma erro de formato.");
         if (sdCard.sdErrorCode() == SD_CARD_ERROR_CMD0)
         {
             Serial.println(
@@ -240,8 +370,109 @@ bool SDUtil::begin()
     return resultado;
 }
 
+String SDUtil::initStatus()
+{
+    if (!enabled()) { return "SD desativado neste dispositivo.\n"; }
+    SharedSpi::Guard guard;
+    if (mounted_) return "SD: montado (escrita nao testada)\n";
+    char text[150];
+    snprintf(text, sizeof(text), "SD indisponivel: ultimo begin() falhou; SdError=0x%02X,0x%02X\nSCLK=7 MISO=5 MOSI=6 CS=4\n",
+        unsigned(initError_), unsigned(initErrorData_));
+    String result(text);
+    result += "Etapa: " + String(initStage_) + "\n";
+    if (initError_ == SD_CARD_ERROR_READ_TIMEOUT)
+        result += "READ_TIMEOUT: cartao nao iniciou envio dos dados no prazo.\n";
+    return result;
+}
+
+namespace {
+// O formatador imprime progresso a intervalos regulares. Cede CPU nesses pontos
+// sem soltar o SPI: tarefas de SD/display continuam excluidas durante a operacao.
+class SdFormatProgress : public Print {
+public:
+    size_t write(uint8_t ch) override {
+        const size_t written = Serial.write(ch);
+        vTaskDelay(1);
+        return written;
+    }
+};
+}
+
+bool SDUtil::formatCard(String& report)
+{
+    if (!enabled()) { report = "SD desativado: formatacao bloqueada.\n"; return false; }
+    SharedSpi::Guard guard;
+    ++mountGeneration;
+    mounted_ = false;
+    spiHz_ = 0;
+    capacityBytes_ = 0;
+    portENTER_CRITICAL(&metricsMux);
+    metrics.mounted = false;
+    metrics.valid = false;
+    metrics.spiHz = 0;
+    portEXIT_CRITICAL(&metricsMux);
+    sdCard.end();
+    pinMode(14, OUTPUT); digitalWrite(14, HIGH);
+    pinMode(SD_CS, OUTPUT); digitalWrite(SD_CS, HIGH);
+    SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+
+    // Nao exige volume montado: a estrutura FAT atual pode estar ilegivel.
+    bool ready = false;
+    uint32_t sectors = 0;
+    const uint32_t rates[] = {400000UL, 100000UL};
+    for (uint8_t i = 0; i < 2 && !ready; ++i) {
+        digitalWrite(SD_CS, HIGH);
+        delay(100);
+        Serial.printf("[SD FORMAT] Inicializacao fisica a %lu Hz...\n", (unsigned long)rates[i]);
+        initStage_ = "FORMAT_CARD_BEGIN";
+        ready = sdCard.cardBegin(SdSpiConfig(SD_CS, SHARED_SPI | USER_SPI_BEGIN, rates[i], &SPI));
+        if (ready) {
+            initStage_ = "FORMAT_READ_CSD";
+            sectors = sdCard.card()->sectorCount();
+            ready = sectors != 0;
+        }
+        initError_ = sdCard.sdErrorCode();
+        initErrorData_ = sdCard.sdErrorData();
+        if (!ready) Serial.printf("[SD FORMAT] Falha etapa=%s SdError=0x%02X,0x%02X\n",
+            initStage_, unsigned(initError_), unsigned(initErrorData_));
+    }
+    if (!ready) {
+        report = "Formatador nao iniciado: falha de comunicacao fisica com o cartao.\n" + initStatus();
+        return false;
+    }
+    // FatFormatter cria FAT16 para este cartao de ~1 GB; FAT32 nos maiores.
+    if (sectors <= 12288UL || uint64_t(sectors) * 512 > 32ULL * 1024 * 1024 * 1024) {
+        report = "Formatacao abortada: capacidade fora do intervalo suportado (mais de 6 MiB ate 32 GiB).\n";
+        return false;
+    }
+    Serial.printf("[SD FORMAT] APAGANDO estrutura de arquivos do SD CS=4: %lu setores (%llu MiB).\n",
+        (unsigned long)sectors, uint64_t(sectors) * 512 / (1024 * 1024));
+    Serial.println("[SD FORMAT] Aguarde. Nao desligue a alimentacao.");
+    uint8_t buffer[512];
+    FatFormatter formatter;
+    SdFormatProgress progress;
+    initStage_ = "FORMAT_WRITE";
+    // Uma unica tentativa de escrita. Nao repete uma formatacao interrompida.
+    const bool formatted = formatter.format(sdCard.card(), buffer, &progress);
+    const bool synced = formatted && sdCard.card()->syncDevice();
+    initError_ = sdCard.sdErrorCode();
+    initErrorData_ = sdCard.sdErrorData();
+    if (!synced) {
+        report = "Formatacao falhou; a estrutura do cartao pode ter sido parcialmente alterada.\n" + initStatus();
+        return false;
+    }
+    Serial.println("[SD FORMAT] Escrita concluida; conferindo montagem...");
+    if (!begin()) {
+        report = "Formatacao concluida, mas a remontagem falhou.\n" + initStatus();
+        return false;
+    }
+    report = "SD formatado e remontado com sucesso. Arquivos anteriores apagados.\nTipo: " + getCardType() + "\n";
+    return true;
+}
+
 bool SDUtil::test()
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     String path = "/sd_test_" + String(millis()) + ".tmp";
     while (exists(path))
@@ -263,8 +494,9 @@ bool SDUtil::test()
 
 String SDUtil::getCardType()
 {
+    if (!enabled()) { return "Desativado"; }
     SharedSpi::Guard spiGuard;
-    if (!sdCard.card())
+    if (!mounted_ || !sdCard.card())
         return "Desconhecido";
 
     switch (sdCard.card()->type())
@@ -282,21 +514,30 @@ String SDUtil::getCardType()
 
 uint64_t SDUtil::getCardSizeBytes()
 {
+    if (!enabled()) { return 0; }
     SharedSpi::Guard spiGuard;
-    if (!sdCard.card())
-        return 0;
-    // Calcula o tamanho total multiplicando o número de blocos pelo tamanho do bloco (512 bytes)
-    return (uint64_t)sdCard.card()->sectorCount() * 512ULL;
+    // Capacidade ja validada na montagem; evita nova leitura CSD intermitente.
+    return mounted_ ? capacityBytes_ : 0;
+}
+
+uint64_t SDUtil::getVolumeSizeBytes()
+{
+    if (!enabled()) { return 0; }
+    SharedSpi::Guard guard;
+    if (!mounted_ || !sdCard.vol() || !sdCard.vol()->fatType()) return 0;
+    return uint64_t(sdCard.vol()->clusterCount()) * sdCard.vol()->sectorsPerCluster() * 512ULL;
 }
 
 bool SDUtil::exists(String path)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     return sdCard.exists(path.c_str());
 }
 
 bool SDUtil::writeText(String path, String text)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     FsFile file = sdCard.open(path.c_str(), O_WRITE | O_CREAT | O_TRUNC);
     if (!file)
@@ -310,11 +551,12 @@ bool SDUtil::writeText(String path, String text)
 
 bool SDUtil::appendText(String path, String text)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     const bool isLog = path == "/log.txt" || path == "/network_history.log" ||
         path == "/network_history.previous.log" || path == "/diagnostic.log" ||
         path == "/diagnostic.previous.log";
-    if (!sdCard.card())
+    if (!mounted_ || !sdCard.card())
     {
         ++appendErrors;
         Serial.println("[SD] Falha ao acrescentar texto: cartao indisponivel.");
@@ -362,6 +604,7 @@ bool SDUtil::appendText(String path, String text)
 
 String SDUtil::readText(String path)
 {
+    if (!enabled()) { return "SD desativado neste dispositivo.\n"; }
     SharedSpi::Guard spiGuard;
     FsFile file = sdCard.open(path.c_str(), O_READ);
     if (!file)
@@ -379,18 +622,21 @@ String SDUtil::readText(String path)
 
 bool SDUtil::removeFile(String path)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     return sdCard.remove(path.c_str());
 }
 
 bool SDUtil::createDir(String path)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     return sdCard.mkdir(path.c_str());
 }
 
 String SDUtil::listFiles(String path)
 {
+    if (!enabled()) { return "SD desativado neste dispositivo.\n"; }
     SharedSpi::Guard spiGuard;
     String result;
     FsFile root = sdCard.open(path.c_str());
@@ -420,6 +666,7 @@ String SDUtil::listFiles(String path)
 
 bool SDUtil::writeJson(String path, String jsonContent)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     if (!sdCard.card())
         return false;
@@ -451,6 +698,7 @@ bool SDUtil::writeJson(String path, String jsonContent)
 
 String SDUtil::readJson(String path)
 {
+    if (!enabled()) { return ""; }
     SharedSpi::Guard spiGuard;
     if (!sdCard.card() || !sdCard.exists(path.c_str()))
         return "";
@@ -478,6 +726,7 @@ String SDUtil::readJson(String path)
 
 uint64_t SDUtil::getUsedBytes(bool* valid)
 {
+    if (!enabled()) { if (valid) *valid = false; return 0; }
     SharedSpi::Guard spiGuard;
     if (valid) *valid = false;
     if (!sdCard.card() || !sdCard.vol())
@@ -498,6 +747,7 @@ uint64_t SDUtil::getUsedBytes(bool* valid)
 
 uint64_t SDUtil::getUsedBytesCooperative(bool* valid)
 {
+    if (!enabled()) { if (valid) *valid = false; return 0; }
     if (valid) *valid = false;
     const uint32_t startedAt = millis();
     uint32_t clusters, firstFat, sectorsPerCluster, generation;
@@ -565,6 +815,7 @@ uint64_t SDUtil::getUsedBytesCooperative(bool* valid)
 
 int SDUtil::readLogTail(const char* path, String& content, bool& truncated)
 {
+    if (!enabled()) { content = "SD desativado neste dispositivo.\n"; truncated = false; return 503; }
     SharedSpi::Guard spiGuard;
     content = "";
     truncated = false;
@@ -632,6 +883,7 @@ int SDUtil::readLogTail(const char* path, String& content, bool& truncated)
 
 String SDUtil::readTail(String path, size_t maxBytes)
 {
+    if (!enabled()) { return "SD desativado neste dispositivo.\n"; }
     SharedSpi::Guard spiGuard;
     FsFile file = sdCard.open(path.c_str(), O_READ);
     if (!file)
@@ -653,12 +905,14 @@ String SDUtil::readTail(String path, size_t maxBytes)
 
 bool SDUtil::removeDir(String path)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     return sdCard.rmdir(path.c_str());
 }
 
 uint64_t SDUtil::getFileSize(String path)
 {
+    if (!enabled()) { return 0; }
     SharedSpi::Guard spiGuard;
     if (!sdCard.card())
         return 0;
@@ -677,6 +931,7 @@ uint64_t SDUtil::getFileSize(String path)
 
 bool SDUtil::renameFile(const String& from, const String& to)
 {
+    if (!enabled()) { return false; }
     SharedSpi::Guard spiGuard;
     return sdCard.rename(from.c_str(), to.c_str());
 }

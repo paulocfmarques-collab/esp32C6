@@ -1,6 +1,12 @@
 # Comandos — ESP32-C6 Gateway
 
-Revisão documental: **02/11/2026** · [Pinout e ligação do sensor](PINOUT.md). Histórico:
+**Configuracao atual: SD desativado neste dispositivo.** Todos os comandos `sd_*`,
+inclusive `sd_format:APAGAR_TUDO`, apenas informam a desativacao, sem acessar o
+cartao. O procedimento de formatacao abaixo so se aplica apos reabilitar
+`SDCARD_ENABLED` em [DeviceConfig.h](DeviceConfig.h) e recompilar. `selftest`
+marca SD como SKIP; `crash_info` envia e limpa o panic interno apos envio bem-sucedido, sem arquivar.
+
+Revisão documental: **05/11/2026** · [Pinout e ligação do sensor](PINOUT.md). Histórico:
 [CHANGELOG.md](CHANGELOG.md); [catálogo geral](../ESP32_Documents/COMANDOS.md).
 
 Referência do `CommandProcessor.cpp` desta atualização. Envie um comando de texto por datagrama UDP para a **porta 4210** do dispositivo. No AP de configuração, use `192.168.4.1`. O limite de entrada é **255 bytes** por comando, incluindo argumentos. Nomes de comando aceitam maiúsculas/minúsculas; SSID, senha e texto mantêm a capitalização.
@@ -45,7 +51,7 @@ Veja [PROMETHEUS.md](PROMETHEUS.md) para todas as metricas e limitacoes.
 | `status` | Estado dos serviços. |
 | `uptime` | Tempo desde a inicialização. |
 | `reason` | Motivo do último reset. |
-| `crash_info` | Mostra o ultimo reset e consulta o core dump. Salva e confere um relatorio `/crash_AAAAMMDD_HHMMSS.txt` no SD antes de apagar o registro interno; sem hora, usa `/crash_SEM_NTP_<millis>.txt`. Em caso de falha no SD, preserva o registro interno. Requer core dump ELF em flash habilitado no core/SDK e particao de core dump. Caso contrario, informa que o recurso nao esta habilitado. No C6, mostra registradores e pilha RISC-V para decodificacao com o ELF correspondente. |
+| `crash_info` | Le o panic interno, envia por serial/UDP e limpa o registro somente apos envio local completo. Nao grava arquivo no SD. Falha de leitura, memoria ou envio preserva o registro. Requer core dump ELF e particao compativel; mostra registradores/pilha e SHA do ELF para decodificacao. |
 | `version` | Versão gerada pelo firmware. |
 | `build` | Data e hora da compilação. |
 | `alive` | Confirma que o dispositivo responde. |
@@ -84,7 +90,7 @@ Veja [PROMETHEUS.md](PROMETHEUS.md) para todas as metricas e limitacoes.
 
 | Comando | Função |
 | --- | --- |
-| `tela:N` | Seleciona a página 0 a 10; tabela abaixo. |
+| `tela:N` | Seleciona a página 0 a 11; tabela abaixo. |
 | `som_ganho:V` | Ganho visual de 1 a 64, padrao 32. Realca sinal e ruido, sem alterar o ganho eletrico do sensor. |
 | `som_modo:equalizador` | Mostra as 12 faixas reais de frequencia na pagina 10, modo padrao. |
 | `som_modo:historico` | Mostra o historico temporal de volume de 9,6 segundos na pagina 10. |
@@ -130,6 +136,7 @@ Veja [PROMETHEUS.md](PROMETHEUS.md) para todas as metricas e limitacoes.
 | `sd_log` | Lê os últimos 1.000 bytes de /log.txt. |
 | `sd_clear_log` | Remove /log.txt. |
 | `sd_test` | Testa gravação, leitura e remoção de arquivo temporário. |
+| `sd_format:APAGAR_TUDO` | **Somente serial USB. Apaga todos os arquivos do SD onboard**, recria FAT16/FAT32 e verifica a remontagem. Funciona sem volume previamente montado; ainda exige comunicacao fisica com o cartao. |
 
 ## Clima
 
@@ -160,11 +167,31 @@ Em `wifi_add`, o primeiro `:` depois do SSID separa a senha. A senha pode conter
 
 No portal, senha vazia preserva a senha anterior somente quando o SSID não muda. Marque **Rede aberta** para retirar a senha. Apague o SSID para remover o perfil. Salvar pelo portal verifica os cinco perfis e reinicia.
 
+## Formatar o SD pela serial
+
+`sd_status` usa o tamanho util do volume e uma consulta cooperativa de espaco usado. Falha ou timeout da consulta aparece como **indisponivel**, nao como zero. "Volume montado" nao garante ausencia de falhas posteriores de leitura/escrita. A capacidade fisica e preservada do CSD validado na montagem, sem reler o registro a cada consulta.
+
+Depois de compilar/gravar esta revisao, abra o Monitor Serial a 115200 baud e envie **`sd_format:APAGAR_TUDO`**, seguido de Enter. A operacao destroi os arquivos do cartao conectado ao CS4, incluindo logs e crashes arquivados; nao e apagamento seguro de todos os setores. Sem o argumento exato, apenas mostra o aviso; por UDP, o comando e recusado. Nao existe formatacao automatica no boot ou apos erro de montagem.
+
+O formatador pode iniciar sem FAT legivel, mas precisa inicializar o cartao e ler sua capacidade. Faz ate duas tentativas fisicas (400 kHz e 100 kHz), e somente uma tentativa de formatacao. Usa FAT16 no cartao de aproximadamente 1 GB deste projeto; FAT32 em capacidades maiores, ate 32 GiB. O sensor local fica pausado e o SPI reservado durante a operacao. A serial mostra progresso; portal/display/comandos podem ficar temporariamente indisponiveis. Nao desligue a alimentacao durante a escrita.
+
+O resultado distingue: falha antes de iniciar o formatador; falha de escrita, com possivel estrutura parcial; formatacao concluida com falha de remontagem; ou **SD formatado e remontado com sucesso**. Logs normais podem ser recriados depois. A copia interna do panic nao e apagada por esse comando. Envie `sd_status` e `sd_list:/` para conferir apos sucesso.
+
 ## Páginas
+
+`sensor_local` consulta temperatura, umidade e erros do DHT22 no GPIO3, sem forcar nova leitura. `selftest` inclui DHT22 e montagem SD (nao testa escrita). `sd_status`, quando a montagem falha, retorna o ultimo codigo `SdError` e a pinagem tambem por serial/UDP. `crash_info` pode mostrar um registro de firmware anterior, limpo depois do envio bem-sucedido do relatorio, sem arquivamento no SD.
+
+Para investigar um reinicio automatico, consulte `reason` antes de cortar alimentacao ou apertar RESET; envie tambem `version`. A serial imprime `[BOOT] reset=... code=... build=...` no inicio do setup, independentemente de SD. Preserve as linhas imediatamente anteriores ao reinicio.
+
+Durante OTA, o sensor local fica pausado e a serial mostra `[OTA] Leitura DHT22 pausada.`. Em falha de upload, a leitura retoma; em sucesso, o dispositivo reinicia. O leitor DHT22 tem timeout por pulso e captura total limitada, sem desativar watchdogs.
+
+No boot ou ao tentar remontar o cartao por um comando SD, ha no maximo tres tentativas de inicializacao, com dados em 400 kHz, 100 kHz e 2 MHz, nessa ordem. A primeira montagem aguarda pelo menos 3 s desde o boot, como no diagnostico isolado que passou a 400 kHz. O log distingue `CARD_BEGIN`, `READ_CSD`, `READ_SECTOR_0` e `VOLUME_BEGIN`. Essas verificacoes apenas leem; nao formatam. A aplicacao retoma seus logs habituais se a montagem funcionar. `sd_status` continua podendo demorar ao calcular o espaco usado.
+
+Layouts reconhecidos usam `VOLUME_BEGIN_EXPLICIT`: FAT direto no setor zero ou primeira particao FAT/exFAT candidata com endereco e tamanho dentro do cartao. No caso MBR, `READ_VOLUME_BOOT` distingue falha de leitura do inicio da particao de falha na montagem. Linhas `[SD] MBR`, `[SD] BPB` e `[SD] FAT direto` ajudam a identificar o layout sem alterar o cartao.
 
 | Número | Página |
 | --- | --- |
-| 0 | Relógio, clima atual e sinal Wi-Fi |
+| 0 | Relogio e temperatura/umidade locais |
 | 1 | NTP e serviços — parte 1 |
 | 2 | NTP e serviços — parte 2 |
 | 3 | Rede — parte 1 |
@@ -173,11 +200,14 @@ No portal, senha vazia preserva a senha anterior somente quando o SSID não muda
 | 6 | Cinco redes salvas |
 | 7 | Cartão SD |
 | 8 | Monitor de rede e gráfico de latência |
-| 9 | Previsão diária |
-| 10 | Som: equalizador de 12 faixas ou historico temporal, com ganho ajustavel |
+| 9 | Porto Alegre: temperatura, umidade e previsao da internet |
+| 10 | Som: equalizador/historico analogico ativo no GPIO0 |
+| 11 | DHT22 local: temperatura, umidade, tendencia e estado da leitura |
+
+O DHT22 local abre com **`tela:11`** ou BOOT. DATA no GPIO3, VCC em 3V3, GND comum. Leitura a cada 2,5 s, independente de internet. Falhas nao aparecem como zero; dados com mais de 10 s sao considerados antigos. A pagina 11 fica aberta ate voce navegar, com dimmer ativo.
 
 O monitor de som abre com `tela:10` ou pelo BOOT. O sensor analogico de som da
-RoboCore fica configurado no GPIO0 (`SoundSensorConfig::ANALOG_PIN = 0` em
+RoboCore esta ativo no GPIO0 (`SoundSensorConfig::ANALOG_PIN = 0` em
 `SoundMonitor.h`). Com a placa desligada, ligue VCC a 3V3, GND a GND e a saida
 de sinal analogico ao GPIO0. Nao alimente o sensor em 5 V nesta ligacao direta.
 
@@ -229,6 +259,11 @@ Fora da página de som, após 60 segundos sem botão ou comando serial/UDP, o pr
 
 `net_history` pode começar no meio de uma linha por retornar somente a cauda do arquivo. Eventos e estatísticas em RAM reiniciam no boot; os arquivos permanecem no cartão.
 
-Escrita e exclusão no SD não pedem confirmação. `crash_info` pode apagar o
-dump interno após verificar a cópia; preserve o ELF correspondente. Esta
+Operacoes SD ficam bloqueadas no perfil atual. `crash_info` apaga o
+dump interno apos envio local completo, sem copia no SD; preserve o ELF correspondente. Esta
 revisão de documentação não compila nem grava a placa.
+
+Na serial, a limpeza ocorre depois de enviar todos os bytes e esvaziar o buffer
+de transmissao. Por UDP, todos os blocos precisam ser aceitos por begin/write/end;
+isso nao e confirmacao de recebimento pelo computador remoto. Falha de envio
+preserva o registro. Novos panics ainda podem gerar novo core dump interno.

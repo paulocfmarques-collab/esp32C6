@@ -1,9 +1,14 @@
 # Pinout — ESP32-C6 Gateway
 
-**Revisão: 02/11/2026** · [Início](README.md) · [Operação](LEIA-ME.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+**SD onboard desativado por configuracao** neste dispositivo: CS4 permanece alto.
+Os pinos SPI 6/7 continuam necessarios para a tela; nao os desconecte. Sensores
+de som (GPIO0) e DHT22 (GPIO3) permanecem ativos. A desativacao e de software,
+nao corta a alimentacao do cartao. Configuracao: [DeviceConfig.h](DeviceConfig.h).
+
+**Revisão: 05/11/2026** · [Início](README.md) · [Operação](LEIA-ME.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
 
 Guia de ligação da **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de
-172 × 320 pixels, cartão microSD, LED RGB e sensor analógico de som RoboCore.
+172 × 320 pixels, cartão microSD, LED RGB e sensor local DHT22/AM2302. A captura analogica RoboCore esta ativa no GPIO0, sem ocupar o GPIO3 do DHT22.
 Os números deste documento são **GPIOs do ESP32**, não posições físicas do
 conector. Na placa, `GPIO0` pode estar identificado como `IO0`.
 
@@ -16,7 +21,8 @@ conector. Na placa, `GPIO0` pode estar identificado como `IO0`.
 
 | Recurso | Sinal | GPIO | Direção no ESP32 | Uso |
 | :--- | :--- | :---: | :--- | :--- |
-| Sensor de som RoboCore | Saída analógica do módulo | **0** | Entrada ADC | Nível relativo de som e gráfico na página 10 |
+| DHT22/AM2302 local | DATA | **3** | Bidirecional digital | Temperatura e umidade locais; pagina 11 |
+| Som legado RoboCore | Saida analogica | **0** | Entrada ADC | Ativo: `ANALOG_PIN = 0` |
 | SPI compartilhado | SCLK | **7** | Saída | Clock do display e do microSD |
 | SPI compartilhado | MOSI | **6** | Saída | Dados para display e microSD |
 | MicroSD | MISO | **5** | Entrada | Dados vindos do cartão |
@@ -31,9 +37,28 @@ conector. Na placa, `GPIO0` pode estar identificado como `IO0`.
 Display, microSD, LED RGB e botão já fazem parte da placa. **Não precisam de
 novos jumpers** para as conexões internas listadas acima.
 
+## Sensor local DHT22/AM2302
+
+Modulo de tres pinos, seguindo os nomes impressos, com a placa desligada:
+
+| Modulo DHT22 | ESP32-C6 |
+| :--- | :--- |
+| VCC / + | **3V3** |
+| DATA / OUT / S | **GPIO3** |
+| GND / - | **GND** |
+
+Se o modulo nao incluir pull-up, use resistor externo de 4,7 a 10 kOhm entre DATA e 3V3. Nunca puxe DATA para 5V nesta ligacao. O firmware usa leitor integrado com GPIO open-drain, checksum e limites de 120 us por pulso e 6 ms por captura. A leitura pausa durante OTA e retoma se o upload falhar; em sucesso, reinicia com o novo firmware. Nao requer biblioteca DHT externa.
+
+A leitura ocorre a cada 2,5 s. `tela:11` mostra valores e tendencia das ultimas 48 tentativas; falhas deixam lacunas no grafico. A tela principal tambem mostra temperatura e umidade locais, mesmo sem NTP/Wi-Fi. Valores antigos ou falhos nao sao apresentados como leitura atual. A pagina 11 permanece aberta e conserva o dimmer.
+
+GPIO3 esta ocupado pelo DHT22: nao conectar LDR/PIR nem remapear o som analogico para esse pino simultaneamente. GPIO0/1/2 ficam reservados para a futura adaptacao do INMP441, ainda nao implementada.
+
 ## Ligação do sensor de som RoboCore
 
-O projeto foi preparado para o [Sensor de Som analógico da RoboCore](https://www.robocore.net/sensor-ambiente/sensor-de-som-microfone),
+**Captura analogica ativa no GPIO0.** GPIO3 permanece reservado para o DHT22.
+
+
+O adaptador legado foi preparado para o [Sensor de Som analógico da RoboCore](https://www.robocore.net/sensor-ambiente/sensor-de-som-microfone),
 que usa microfone e amplificador. Use a identificação dos terminais no seu
 módulo; a saída pode ser identificada como sinal analógico.
 
@@ -78,7 +103,7 @@ Use `ANALOG_PIN = -1` para desativar a captação quando o sensor não estiver
 conectado. Um pino analógico solto pode produzir valores sem significado;
 o firmware não detecta automaticamente a presença física do módulo.
 
-O adaptador aceita **GPIO0 a GPIO3** nesta placa, preservando os pinos do SPI.
+O adaptador legado aceita GPIO0 a GPIO3, mas **GPIO3 agora pertence ao DHT22**. Para reativar o RoboCore, use apenas GPIO0, GPIO1 ou GPIO2 e revise eventuais perifericos instalados.
 Se mudar o sinal para outro desses GPIOs, atualize a constante e a ligação.
 Não remapeie display ou SD para acomodar o sensor.
 
@@ -125,7 +150,8 @@ reutilizados para o sensor de som.
 | Pinos | Situação nesta revisão |
 | :--- | :--- |
 | **GPIO0** | Sensor de som configurado por padrão |
-| **GPIO1, GPIO2 e GPIO3** | Não utilizados pelos fontes ativos; alternativas aceitas pelo adaptador analógico |
+| **GPIO0, GPIO1 e GPIO2** | Sem periferico ativo; reservados para o futuro INMP441 |
+| **GPIO3** | DATA do DHT22/AM2302 local |
 | **GPIO4 a GPIO9, GPIO14, GPIO15, GPIO21 e GPIO22** | Ocupados pelas funções da tabela principal |
 | **GPIO12 e GPIO13** | USB nativo do ESP32-C6; preservar para o console e gravação USB |
 | **GPIO16 e GPIO17** | Interface UART0 do chip; não são o console USB CDC configurado por padrão |

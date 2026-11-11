@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include "DisplayUtil.h"
 #include "RGBLed.h"
+#include "LocalSensor.h"
 
 extern DisplayUtil display;
 extern RGBLed rgbLed;
@@ -23,6 +24,8 @@ class OTAManager
         ArduinoOTA.onStart(
             []()
             {
+                localSensor.pauseForOta(true);
+                Serial.println("[OTA] Leitura DHT22 pausada.");
                 SharedSpi::Guard spiGuard;
                 ultimoPercentual = -1;
 
@@ -151,6 +154,7 @@ class OTAManager
 
                 rgbLed.red();
                 delay(2000);
+                localSensor.pauseForOta(false);
             });
 
         ArduinoOTA.begin();

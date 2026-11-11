@@ -67,6 +67,10 @@ void begin(SDUtil& sd) {
     const esp_reset_reason_t reason = esp_reset_reason();
     if (reason == ESP_RST_POWERON || marker.magic != markerMagic || marker.pending > 1)
         marker = {markerMagic, 0, 0, 0};
+    if (!sd.enabled()) {
+        Serial.println("[DIAG] Persistencia SD desativada; sem tarefa de gravacao.");
+        return;
+    }
     const char* reset = reason == ESP_RST_PANIC ? "PANIC" :
         reason == ESP_RST_TASK_WDT ? "TASK_WDT" : reason == ESP_RST_INT_WDT ? "INT_WDT" :
         reason == ESP_RST_WDT ? "WDT" : reason == ESP_RST_BROWNOUT ? "BROWNOUT" :
@@ -109,7 +113,7 @@ void wifiDisconnected(uint32_t reason) {
 }
 
 void process() {
-    if (!started) return;
+    if (!started || !DeviceConfig::SDCARD_ENABLED) return;
     const uint32_t now = millis();
     const uint32_t disconnects = disconnectCount.load();
     if (disconnects != lastDisconnects) {

@@ -6,6 +6,7 @@
 #include "SDUtil.h"
 #include "ClimaManager.h"
 #include "CrashDiagnostics.h"
+#include "LocalSensor.h"
 
 #include <WiFi.h>
 #include <esp_system.h>
@@ -21,7 +22,7 @@ CommandProcessor::CommandProcessor(DisplayUtil& display, ESP32Gateway& gateway, 
 bool CommandProcessor::begin()
 {
     sdReady_ = sd_.begin();
-    Serial.println(sdReady_ ? "SD pronto" : "SD indisponivel");
+    Serial.println(!sd_.enabled() ? "SD desativado neste dispositivo" : sdReady_ ? "SD pronto" : "SD indisponivel");
     return sdReady_;
 }
 
@@ -105,11 +106,12 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "flash_info\n"
                   "health\n"
                   "selftest\n"
+                  "sensor_local\n"
                   "wifi_add:SSID:senha\n"
                   "wifi_list\n"
                   "net_monitor\n"
                   "net_history\n"
-                  "tela:0..10\n"
+                  "tela:0..11\n"
                   "som_ganho:1..64\n"
                   "som_modo:equalizador|historico\n"
                   "tela_next\n"
@@ -137,6 +139,7 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "led_pisca:P:I\n"
                   "led_blink:I\n"
                   "sd_status\n"
+                  "sd_format:APAGAR_TUDO\n"
                   "sd_list:[pasta]\n"
                   "sd_read:arquivo\n"
                   "sd_write:arquivo:texto\n"
@@ -178,7 +181,8 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     else if (command == "net_monitor")
         answerAll(gateway_.monitorReport(), false);
     else if (command == "net_history")
-        answerAll(sdReady_ ? sd_.readTail("/network_history.log", 2000) : "SD indisponivel\n",
+        answerAll(!sd_.enabled() ? String("Historico SD desativado neste dispositivo.\n") :
+                  sdReady_ ? sd_.readTail("/network_history.log", 2000) : "SD indisponivel\n",
                   false);
     else if (command == "tela_next")
     {
@@ -188,14 +192,14 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     else if (command.startsWith("tela:"))
     {
         String arg = command.substring(5);
-        bool valid = (arg.length() == 1 && arg[0] >= '0' && arg[0] <= '9') || arg == "10";
+        bool valid = (arg.length() == 1 && arg[0] >= '0' && arg[0] <= '9') || arg == "10" || arg == "11";
         if (valid)
         {
             display_.selectPage(arg.toInt());
             answerAll("Pagina selecionada\n", false);
         }
         else
-            answerAll("Uso: tela:0..10\n", false);
+            answerAll("Uso: tela:0..11\n", false);
     }
     else if (command.startsWith("som_ganho:")) {
         String value = command.substring(10);
@@ -299,7 +303,17 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     }
     else if (command == "crash_info")
     {
-        answerAll(CrashDiagnostics::lerArquivarEApagar(sd_, obterMotivoReset()), false);
+        bool podeLimpar = false;
+        const String report = CrashDiagnostics::ler(obterMotivoReset(), podeLimpar);
+        const size_t serialBytes = Serial.print(report);
+        bool enviado;
+        if (serialReply_) {
+            Serial.flush();
+            enviado = serialBytes == report.length();
+        } else enviado = gateway_.sendMessage(report);
+        if (podeLimpar)
+            answerAll(enviado ? CrashDiagnostics::limpar() :
+                String("Falha no envio; registro interno de crash preservado.\n"), false);
     }
     else if (command == "reason")
     {
@@ -709,6 +723,18 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     {
         executarHealth();
     }
+    else if (command == "sensor_local")
+    {
+        const auto s = localSensor.snapshot();
+        String report = "DHT22 local | DATA=GPIO3 VCC=3V3\n";
+        if (s.fresh() && !s.lastFailed)
+            report += "Temperatura: " + String(s.temperature, 1) + " C\nUmidade: " + String(s.humidity, 1) + " %\n";
+        else report += !s.running ? "Tarefa indisponivel\n" : s.lastFailed ?
+            "Falha de leitura; confira DATA, 3V3 e GND\n" : s.valid ?
+            "Leitura antiga\n" : "Aguardando primeira leitura\n";
+        report += "Erros: " + String(s.errors) + "\nTela: tela:11\n";
+        answerAll(report, false);
+    }
     else if (command == "selftest")
     {
         executarSelfTest();
@@ -722,6 +748,10 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
 
 void CommandProcessor::executarSd(const String& command)
 {
+    if (!sd_.enabled()) {
+        answerAll("SD desativado neste dispositivo; nenhum acesso ao cartao foi feito.\n", false);
+        return;
+    }
     const size_t maxBytes = 1000;
     String name = command;
     String arg = "";
@@ -732,12 +762,33 @@ void CommandProcessor::executarSd(const String& command)
         arg = command.substring(sep + 1);
     }
 
+    if (name == "sd_format")
+    {
+        // Trata antes do teste de montagem; formatar nao exige FAT legivel.
+        if (!serialReply_) {
+            answerAll("Formatacao permitida somente pela porta serial USB.\n", false);
+            return;
+        }
+        if (arg != "APAGAR_TUDO") {
+            answerAll("ATENCAO: apaga TODOS os arquivos do SD, incluindo logs e crashes arquivados.\n"
+                      "Para executar: sd_format:APAGAR_TUDO\n", false);
+            return;
+        }
+        answerAll("[SD FORMAT] Confirmacao recebida para o cartao onboard CS=4. Aguarde o resultado pela serial.\n", false);
+        String report;
+        localSensor.pauseForOta(true);
+        sdReady_ = sd_.formatCard(report);
+        localSensor.pauseForOta(false);
+        answerAll(report, false);
+        return;
+    }
+
     if (!sdReady_)
     {
         sdReady_ = sd_.begin();
         if (!sdReady_)
         {
-            answerAll("SD indisponivel\n", false);
+            answerAll(sd_.initStatus(), false);
             return;
         }
     }
@@ -745,13 +796,21 @@ void CommandProcessor::executarSd(const String& command)
     if (name == "sd_status")
     {
         const uint64_t mib = 1024ULL * 1024ULL;
-        uint64_t total = sd_.getCardSizeBytes();
-        uint64_t used = sd_.getUsedBytes();
-        answerAll("SD: pronto\nTipo: " + sd_.getCardType() +
-                      "\nTotal: " + String((unsigned long)(total / mib)) + " MiB" +
-                      "\nUsado: " + String((unsigned long)(used / mib)) + " MiB" + "\nLivre: " +
-                      String((unsigned long)((total > used ? total - used : 0) / mib)) + " MiB\n",
-                  false);
+        const uint64_t total = sd_.getVolumeSizeBytes();
+        if (!total) {
+            answerAll("SD: montagem registrada, mas tamanho do volume indisponivel.\n"
+                      "Usado e livre nao calculados; nao representam zero.\n", false);
+            return;
+        }
+        bool usedValid = false;
+        const uint64_t used = sd_.getUsedBytesCooperative(&usedValid);
+        String report = "SD: volume montado\nTipo: " + sd_.getCardType() +
+            "\nTotal do volume: " + String((unsigned long)(total / mib)) + " MiB\n";
+        if (usedValid && used <= total) {
+            report += "Usado: " + String((unsigned long)(used / mib)) + " MiB\nLivre: " +
+                String((unsigned long)((total - used) / mib)) + " MiB\n";
+        } else report += "Usado: indisponivel (falha/timeout na consulta)\nLivre: indisponivel\n";
+        answerAll(report, false);
         return;
     }
     if (name == "sd_test")
@@ -1188,6 +1247,24 @@ void CommandProcessor::executarSelfTest()
     }
 
     // =========================================================
+    // Sensor local e estado de montagem SD: nao grava arquivo de teste.
+    totalTestes++;
+    const auto local = localSensor.snapshot();
+    const bool localOk = local.fresh() && !local.lastFailed;
+    if (localOk) {
+        ++testesOK;
+        resultado += "DHT22 local... PASS  " + String(local.temperature, 1) + " C / " + String(local.humidity, 1) + " %\n";
+    } else resultado += !local.running ? "DHT22 local... FAIL  tarefa indisponivel\n" :
+        !local.valid && !local.lastFailed ? "DHT22 local... FAIL  aguardando leitura\n" :
+        "DHT22 local... FAIL  sem leitura atual valida\n";
+    if (!sd_.enabled()) resultado += "SD montagem... SKIP  desativado por configuracao\n";
+    else {
+        totalTestes++;
+        const auto card = sd_.metricsSnapshot();
+        if (card.mounted) { ++testesOK; resultado += "SD montagem... PASS  escrita nao testada\n"; }
+        else resultado += "SD montagem... FAIL\n" + sd_.initStatus();
+    }
+
     // RESULTADO FINAL
     // =========================================================
 

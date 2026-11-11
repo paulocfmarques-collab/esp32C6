@@ -4,12 +4,19 @@
 
 # ESP32-C6 Gateway
 
+> **Configuracao deste dispositivo (06/11/2026): SD desativado** em
+> [DeviceConfig.h](DeviceConfig.h). Sem montagem, escrita, formatacao ou tarefas
+> de logs/estatisticas do cartao. Sensores, tela, serial, Wi-Fi e Prometheus
+> permanecem ativos. A pagina de logs informa a desativacao e `crash_info`
+> envia o relatorio e limpa o panic interno apos envio bem-sucedido, sem arquivo SD. Os recursos SD descritos abaixo exigem reabilitar
+> a configuracao e recompilar. Diagnosticos isolados sao sketches independentes.
+
 **Um painel de operações na palma da mão.**
 
 Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com portal local, consoles serial/UDP,
-logs no microSD, clima de Porto Alegre e métricas para Prometheus e Grafana.
+logs no microSD, sensor local DHT22, clima de Porto Alegre e metricas para Prometheus e Grafana.
 
-Documentação revisada em **02/11/2026** · [Pinout e ligações](PINOUT.md)
+Documentação revisada em **05/11/2026** · [Pinout e ligações](PINOUT.md)
 
 [![ESP32-C6](https://img.shields.io/badge/ESP32--C6-RISC--V-0f766e?style=flat-square)](#hardware)
 [![Arduino](https://img.shields.io/badge/Arduino_Core-ESP32_3.x-00878f?style=flat-square)](#primeiros-passos)
@@ -29,7 +36,7 @@ Documentação revisada em **02/11/2026** · [Pinout e ligações](PINOUT.md)
 
 | Conectar | Acompanhar | Investigar |
 | :--- | :--- | :--- |
-| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e onze páginas no display | Logs de comandos, rede e diagnóstico no SD |
+| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e doze páginas no display | Logs de comandos, rede e diagnóstico no SD |
 | Comandos por serial USB e UDP | Ping ao gateway e histórico de latência | Memória, reinícios e duração das consultas HTTP |
 | Portal local e atualização OTA | Exportador Prometheus e integração com Grafana | Consulta de core dump com `crash_info` |
 
@@ -45,7 +52,7 @@ se movimenta e rebate nas bordas durante a inatividade. A tela permanece ligada.
 | :--- | :--- |
 | Placa | Waveshare **ESP32-C6-LCD-1.47**, com ST7789 |
 | Core Arduino | **esp32 by Espressif Systems 3.x** |
-| Bibliotecas | **Arduino_GFX_Library**, **Adafruit NeoPixel**, **SdFat 2.x** |
+| Bibliotecas | **Arduino_GFX_Library**, **Adafruit NeoPixel**, **SdFat 2.x**; leitor DHT22 integrado |
 | Ferramentas | Arduino IDE 2 ou Arduino CLI com as tarefas do VS Code |
 | Serial USB | **115200 baud**, final de linha CR, LF ou CRLF |
 
@@ -219,7 +226,9 @@ sequenceDiagram
 | Recursos | `esp_heap_free_bytes`, `esp_cpu_usage_percent`, `esp_cpu_temperature_celsius` |
 | UDP | `esp_udp_listener_up`, `esp_udp_packets_received_total`, `esp_udp_send_errors_total` |
 | Cartão e logs | `sdcard_mounted`, `sdcard_log_records_total`, `sdcard_log_errors_total` |
-| Clima de Porto Alegre | `sensor_temperature_celsius`, `sensor_humidity_percent`, `esp_weather_data_age_seconds` |
+| Clima de Porto Alegre e DHT22 local | `sensor_temperature_celsius`, `sensor_humidity_percent`, `esp_weather_data_age_seconds` |
+
+O DHT22 local exporta temperatura e umidade com `source="dht22",location="local"`; disponibilidade, idade e erros acompanham a leitura. Veja [a ligacao](PINOUT.md#sensor-local-dht22am2302).
 
 As métricas de clima usam `source="open_meteo"` e `location="porto_alegre"`.
 A temperatura interna do chip é uma série separada. Todas as séries incluem
@@ -294,15 +303,23 @@ sequenceDiagram
 <a id="interface"></a>
 ## Display, botão e proteção de tela
 
+Diagnostico separado para o SD: **[teste isolado somente de leitura](diagnosticos/SD_Leitura_Isolada/LEIA-ME.md)**,
+sem inicializar tela, Wi-Fi ou sensores. Gravar por USB e restaurar a aplicacao depois.
+
+Para formatacao manual do SD onboard, existe **`sd_format:APAGAR_TUDO`**, exclusivamente pela serial USB. **Apaga os arquivos**; nao e uma rotina automatica de recuperacao. Veja [procedimento e limites](COMANDOS.md#formatar-o-sd-pela-serial).
+
+Interface renovada com cabecalhos comuns, relogio com temperatura/umidade locais e pagina **11** para o DHT22/AM2302 no **GPIO3**. A pagina local permanece aberta, sem protetor ou retorno automatico, mantendo o dimmer. O sensor funciona sem Wi-Fi, com leitura a cada 2,5 s, tendencia das ultimas 48 tentativas e indicacao de falha/atraso. Dados locais e clima externo ficam separados.
+
+
 | Página | Conteúdo | Página | Conteúdo |
 | :---: | :--- | :---: | :--- |
-| 0 | Relógio, clima e Wi-Fi | 5 | Sistema |
+| 0 | Relógio e ambiente local | 5 | Sistema |
 | 1–2 | NTP e serviços | 6 | Perfis Wi-Fi |
 | 3–4 | Rede | 7 | Cartão SD |
 | 8 | Monitor de rede e latência | 9 | Previsão diária |
-| 10 | Monitor de som com gráfico e pico | — | — |
+| 10 | Som: equalizador e historico | 11 | Ambiente local DHT22 e tendência |
 
-O monitor de som (`tela:10`) usa o sensor analogico RoboCore no **GPIO0**, com
+O sensor de som analogico RoboCore esta **ativo no GPIO0** (`ANALOG_PIN = 0`), na pagina `tela:10`. O INMP441 ainda nao esta implementado. Use
 VCC em **3V3** e GND comum. A captacao continua usa ADC/DMA e FFT para mostrar
 um **equalizador de 12 faixas**. O ganho visual padrao e **32x**, ajustavel com
 `som_ganho:1..64`. Use `som_modo:historico` para acompanhar os ultimos **9,6 segundos**
@@ -332,7 +349,7 @@ automática a cada cinco segundos e limite de **8 KiB por consulta**.
 | `/log.txt` | Registros do console de comandos | Sem rotação automática nesta rotina |
 | `/network_history.log` | Conexão, quedas e amostras de ping | Arquivo anterior a partir de aproximadamente 64 KiB |
 | `/diagnostic.log` | Boot, memória, Wi-Fi, animação, clima e consultas de métricas | Arquivo anterior a partir de 256 KiB |
-| `/crash_*.txt` | Relatórios arquivados por `crash_info` | Nomes únicos, sem sobrescrever relatórios anteriores |
+| `/crash_*.txt` | Relatorios antigos | A versao atual de `crash_info` nao cria arquivos |
 
 Os arquivos anteriores de rede e diagnóstico usam o sufixo `.previous.log`.
 Os relatórios `crash_*.txt` podem ser listados e lidos pelos comandos SD;
@@ -347,10 +364,10 @@ flowchart TD
     LOG --> VIEW["Portal /logs ou comandos SD"]
     CRASH["Comando crash_info"] --> CHECK{"Core dump ELF válido?"}
     CHECK -->|"Não"| REPORT["Informar ausência ou erro"]
-    CHECK -->|"Sim"| SAVE["Salvar relatório único no SD"]
-    SAVE --> VERIFY{"Gravação e releitura conferem?"}
+    CHECK -->|"Sim"| SEND["Enviar relatorio por serial ou UDP"]
+    SEND --> VERIFY{"Envio local completo?"}
     VERIFY -->|"Sim"| ERASE["Apagar registro interno de crash"]
-    VERIFY -->|"Não"| KEEP["Preservar registro interno"]
+    VERIFY -->|"Nao"| KEEP["Preservar registro interno"]
 ```
 
 `METRICS_START`, `METRICS_RENDERED` e `METRICS_END` ajudam a localizar interrupções.

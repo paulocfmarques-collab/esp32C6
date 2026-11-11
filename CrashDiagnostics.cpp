@@ -1,14 +1,15 @@
 #include "CrashDiagnostics.h"
-#include "SDUtil.h"
 #include <esp_core_dump.h>
 
-String CrashDiagnostics::lerArquivarEApagar(SDUtil& sd, const String& motivoReset)
+String CrashDiagnostics::ler(const String& motivoReset, bool& podeLimpar)
 {
+    podeLimpar = false;
     String resultado = "Ultimo reset: " + motivoReset + "\n";
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
     esp_err_t erro = esp_core_dump_image_check();
     if (erro != ESP_OK)
         return resultado + "Sem core dump valido: " + esp_err_to_name(erro) + "\n";
+    resultado += "Registro persistido de panic: pode pertencer a uma execucao/firmware anterior.\n";
     char motivo[200] = {};
     if (esp_core_dump_get_panic_reason(motivo, sizeof(motivo)) == ESP_OK)
         resultado += "Panic salvo: " + String(motivo) + "\n";
@@ -16,6 +17,8 @@ String CrashDiagnostics::lerArquivarEApagar(SDUtil& sd, const String& motivoRese
     erro = esp_core_dump_get_summary(&resumo);
     if (erro != ESP_OK)
         return resultado + "Falha ao ler resumo: " + esp_err_to_name(erro) + "\n";
+    if (!resultado.reserve(2048 + sizeof(resumo.exc_bt_info) * 6))
+        return "Sem memoria para preparar crash_info; registro interno preservado.\n";
     char linha[96];
     snprintf(linha, sizeof(linha), "\nPC: 0x%08lx\n", (unsigned long)resumo.exc_pc);
     resultado += "Tarefa: " + String(resumo.exc_task) + linha;
@@ -48,15 +51,20 @@ String CrashDiagnostics::lerArquivarEApagar(SDUtil& sd, const String& motivoRese
     char hash[sizeof(resumo.app_elf_sha256) + 1] = {};
     memcpy(hash, resumo.app_elf_sha256, sizeof(resumo.app_elf_sha256));
     resultado += "ELF SHA256: " + String(hash) + "\n";
-    String caminho, erroSd;
-    if (!sd.salvarCrash(resultado, caminho, erroSd))
-        return resultado + "Falha ao arquivar crash: " + erroSd + "\nRegistro interno preservado.\n";
-    resultado += "Crash salvo no SD: " + caminho + "\n";
-    erro = esp_core_dump_image_erase();
-    resultado += erro == ESP_OK ? "Registro de crash apagado apos leitura.\n"
-        : "Falha ao apagar registro de crash: " + String(esp_err_to_name(erro)) + "\n";
+    podeLimpar = true;
 #else
     resultado += "Core dump nao habilitado neste firmware.\n";
 #endif
     return resultado;
+}
+
+String CrashDiagnostics::limpar()
+{
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
+    const esp_err_t erro = esp_core_dump_image_erase();
+    return erro == ESP_OK ? String("Registro interno de crash apagado apos envio.\n") :
+        "Falha ao apagar registro interno: " + String(esp_err_to_name(erro)) + "\n";
+#else
+    return "Core dump nao habilitado neste firmware.\n";
+#endif
 }

@@ -5,6 +5,7 @@
 #include <SPI.h>
 #include "SdFat.h" // Substitui a biblioteca SD padrão
 #include <atomic>
+#include "DeviceConfig.h"
 
 struct SdMetricsSnapshot
 {
@@ -15,17 +16,22 @@ struct SdMetricsSnapshot
     int64_t updatedUs = 0;
     uint32_t appends = 0, appendErrors = 0;
     uint32_t logRecords = 0, logErrors = 0;
+    uint32_t spiHz = 0;
 };
 
 class SDUtil
 {
 public:
+    static constexpr bool enabled() { return DeviceConfig::SDCARD_ENABLED; }
     bool begin();
+    String initStatus();
+    bool formatCard(String& report);
     bool appendDiagnostic(const char* record);
     bool salvarCrash(const String& relatorio, String& caminho, String& erro);
     bool test();
     String getCardType();
     uint64_t getCardSizeBytes();
+    uint64_t getVolumeSizeBytes();
     uint64_t getUsedBytes(bool* valid = nullptr);
     uint64_t getUsedBytesCooperative(bool* valid = nullptr);
     void processMetrics();
@@ -50,8 +56,12 @@ public:
     bool renameFile(const String& from,const String& to);
 
 private:
-    SdFat sdCard; // Nova instância estável gerenciada pela SdFat
+    SdFs sdCard; // FAT/exFAT explicito, igual ao diagnostico isolado.
     bool mounted_ = false;
+    uint8_t initError_ = 0, initErrorData_ = 0;
+    const char* initStage_ = "nao iniciado";
+    uint32_t spiHz_ = 0;
+    uint64_t capacityBytes_ = 0;
     uint32_t mountGeneration = 0;
     SdMetricsSnapshot metrics;
     portMUX_TYPE metricsMux = portMUX_INITIALIZER_UNLOCKED;
