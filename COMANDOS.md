@@ -236,7 +236,7 @@ no boot. A tela atualiza aproximadamente a cada 100 ms. Nao ha valores
 simulados, gravacao de audio, medicao em decibeis ou calibracao de sonometro.
 
 A pagina de som permanece aberta enquanto selecionada, sem retorno automatico
-ao relogio nem entrada no protetor de tela. Use BOOT, `tela_next` ou `tela:N`
+ao relogio. Use BOOT, `tela_next` ou `tela:N`
 para sair. A reducao automatica de brilho continua ativa.
 
 Referencias: [sensor RoboCore](https://www.robocore.net/sensor-ambiente/sensor-de-som-microfone)
@@ -246,7 +246,7 @@ As páginas de informações retornam ao relógio após 30 segundos, exceto o mo
 
 ## Economia de iluminação
 
-Fora da página de som, após 60 segundos sem botão ou comando serial/UDP, o protetor de robô roda continuamente, alternando dez expressões coloridas a cada 4,2 segundos, com piscadas e movimento suave. A tela não desliga automaticamente. Após 2 minutos, o backlight cai para no máximo 20%, inclusive no monitor de som. Botão ou comando encerram o protetor e restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
+O protetor de tela está desativado. Após 2 minutos de inatividade, o backlight cai para no máximo 20%. Botão ou comando restauram o brilho configurado. Se você definiu zero com `brilho:0` ou `tela_off`, use `tela_on` ou um `brilho` maior que zero. Esses comandos não colocam a CPU em deep sleep.
 
 ## Arquivos do histórico
 

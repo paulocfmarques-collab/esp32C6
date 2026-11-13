@@ -141,14 +141,14 @@ equalizador de 12 faixas por FFT, com ganho visual padrao de 32x. Ajuste com
 e `som_modo:equalizador` retorna as faixas de frequencia. Para o sensor analogico RoboCore, ligue
 VCC a 3V3, GND a GND e o sinal analogico ao GPIO0, com a placa desligada.
 Nao use alimentacao de 5 V nessa ligacao direta. A pagina de som nao volta
-automaticamente ao relogio nem entra no protetor enquanto selecionada;
+automaticamente ao relogio enquanto selecionada;
 a reducao de brilho continua ativa. Detalhes: [COMANDOS.md](COMANDOS.md#páginas).
 
 - Pressão curta no **BOOT**: avança uma página.
 - Segure por 3 segundos e solte: reinicia.
 - Segure por 10 segundos e solte: limpa as redes salvas e reinicia. O firmware, os arquivos SD e o namespace `ntp_cfg` permanecem.
 
-As páginas voltam ao relógio após 30 segundos, exceto o monitor de som e a pagina local DHT22, que permanecem abertos. Nas demais páginas, após 60 segundos sem botão ou comando serial/UDP, a proteção mostra um robô com dez expressões coloridas, piscadas e movimento suave; a tela não desliga automaticamente. As expressões mudam a cada 4,2 segundos. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram a página e o brilho configurado; brilho zero requer `tela_on` ou `brilho:P`. A rede continua funcionando durante o protetor.
+As páginas voltam ao relógio após 30 segundos, exceto o monitor de som e a pagina local DHT22, que permanecem abertos. O protetor de tela está desativado. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram o brilho configurado.
 
 O relogio mostra o estado do Wi-Fi e os dados locais; RSSI detalhado permanece nas paginas de rede. O DHT22 funciona mesmo sem Wi-Fi ou sincronizacao NTP.
 

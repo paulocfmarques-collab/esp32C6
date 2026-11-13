@@ -40,9 +40,6 @@ Documentação revisada em **05/11/2026** · [Pinout e ligações](PINOUT.md)
 | Comandos por serial USB e UDP | Ping ao gateway e histórico de latência | Memória, reinícios e duração das consultas HTTP |
 | Portal local e atualização OTA | Exportador Prometheus e integração com Grafana | Consulta de core dump com `crash_info` |
 
-O display também tem um **robô animado com dez expressões coloridas**: ele pisca,
-se movimenta e rebate nas bordas durante a inatividade. A tela permanece ligada.
-
 <a id="primeiros-passos"></a>
 ## Primeiros passos
 
@@ -301,14 +298,14 @@ sequenceDiagram
 **[Sintaxe, argumentos e exemplos → COMANDOS.md](COMANDOS.md)**
 
 <a id="interface"></a>
-## Display, botão e proteção de tela
+## Display, botão e brilho
 
 Diagnostico separado para o SD: **[teste isolado somente de leitura](diagnosticos/SD_Leitura_Isolada/LEIA-ME.md)**,
 sem inicializar tela, Wi-Fi ou sensores. Gravar por USB e restaurar a aplicacao depois.
 
 Para formatacao manual do SD onboard, existe **`sd_format:APAGAR_TUDO`**, exclusivamente pela serial USB. **Apaga os arquivos**; nao e uma rotina automatica de recuperacao. Veja [procedimento e limites](COMANDOS.md#formatar-o-sd-pela-serial).
 
-Interface renovada com cabecalhos comuns, relogio com temperatura/umidade locais e pagina **11** para o DHT22/AM2302 no **GPIO3**. A pagina local permanece aberta, sem protetor ou retorno automatico, mantendo o dimmer. O sensor funciona sem Wi-Fi, com leitura a cada 2,5 s, tendencia das ultimas 48 tentativas e indicacao de falha/atraso. Dados locais e clima externo ficam separados.
+Interface renovada com cabecalhos comuns, relogio com temperatura/umidade locais e pagina **11** para o DHT22/AM2302 no **GPIO3**. A pagina local permanece aberta, sem retorno automatico, mantendo o dimmer. O sensor funciona sem Wi-Fi, com leitura a cada 2,5 s, tendencia das ultimas 48 tentativas e indicacao de falha/atraso. Dados locais e clima externo ficam separados.
 
 
 | Página | Conteúdo | Página | Conteúdo |
@@ -333,9 +330,7 @@ A escala e visual, sem medicao em decibeis. Veja a
 | Segurar por 3 segundos e soltar | Reiniciar |
 | Segurar por 10 segundos e soltar | Limpar redes salvas e reiniciar |
 
-Nas demais páginas, após **60 segundos de inatividade**, entra o robô animado. As expressões mudam
-a cada **4,2 segundos**. Após **2 minutos**, o brilho cai para no máximo 20%,
-sem desligar automaticamente a tela. Botão ou comando encerram a proteção.
+O protetor de tela está desativado. Após **2 minutos** de inatividade, o brilho cai para no máximo 20%.
 O brilho padrão é 80%; `tela_off` e `brilho:0` continuam disponíveis para desligamento manual.
 
 <a id="diagnostico"></a>

@@ -27,7 +27,6 @@ SoundMonitor soundMonitor;
 bool otaInicializadoCompleto = false;
 bool sdDisponivel = false;
 enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_SOUND, PAGE_LOCAL, PAGE_COUNT };
-uint32_t tempoUltimoComando = 0; // Monitor de ociosidade
 
 void setup() 
 {
@@ -66,7 +65,6 @@ void setup()
   rgbLed.begin();
   gateway.begin();
   ntp.initNTP();
-  tempoUltimoComando = millis();
   Serial.println("[Serial] Console pronto: 115200 baud, termine com Enter. Digite help.");
   Diagnostics::event("SETUP_READY");
 }
@@ -130,8 +128,6 @@ void startSdRead()
 void loop() 
 {
   static bool showingDashboard = false;
-  static bool screensaverActive = false;
-  static uint32_t lastScreensaverFrame = 0;
   static uint32_t responseUntil = 0;
   static uint32_t lastClockUpdate = 0;
   static uint8_t currentPage = 0;
@@ -176,7 +172,6 @@ void loop()
       showingDashboard = true;
       lastClockUpdate = 0;
       statusPageShownAt = millis();
-      tempoUltimoComando = millis();
     }
     else if (holdStage == 1)
     {
@@ -208,7 +203,6 @@ void loop()
       rgbLed.blue();
       display.showHoldMessage("REINICIAR", "Solte (ou segure 10s)", 0x07FF);
     }
-    tempoUltimoComando = millis();
     statusPageShownAt = millis();
   }
   else if (commandProcessor.ledBusy())
@@ -248,19 +242,18 @@ void loop()
     commandProcessor.executeCommand(comando, serialCommand);
     sdDisponivel = commandProcessor.sdReady();
     responseUntil = millis() + 10000;
-    tempoUltimoComando = millis(); // Reseta Protetor de Tela
   }
 
   int pageRequest=display.takePageRequest();
   if(pageRequest!=-1){
     currentPage=pageRequest==-2 ? (currentPage+1)%PAGE_COUNT : pageRequest;
     showingDashboard=true; display.setRotation(1); display.clear(); lastClockUpdate=0;
-    statusPageShownAt=tempoUltimoComando=millis();
+    statusPageShownAt=millis();
     if(currentPage==PAGE_SD)startSdRead();
   }
   commandProcessor.update();
 
-  // Controle de estados da tela (Console Log -> Relógio/Dashboard -> Protetor de Tela)
+  // Controle de estados da tela (Console Log -> Relógio/Dashboard)
   if (!showingDashboard && static_cast<int32_t>(millis() - responseUntil) >= 0)
   {
     showingDashboard = true;
@@ -269,7 +262,6 @@ void loop()
     lastClockUpdate = 0;
   }
 
-  if (!showingDashboard) screensaverActive = false;
   if (showingDashboard)
   {
     // A consulta pode ter iniciado/terminado desde o inicio deste loop.
@@ -285,27 +277,7 @@ void loop()
       lastClockUpdate = 0;
     }
 
-    if (screensaverActive && (millis() - tempoUltimoComando <= 60000 || sdBusy)) {
-      screensaverActive = false;
-      display.clear();
-      lastClockUpdate = 0;
-    }
-    // A protecao continua animada enquanto o dispositivo estiver ocioso.
-    if (millis() - tempoUltimoComando > 60000 && !sdBusy && currentPage != PAGE_SOUND && currentPage != PAGE_LOCAL)
-    {
-      if (!screensaverActive) {
-        display.clear();
-        screensaverActive = true;
-        lastScreensaverFrame = millis() - 40;
-      }
-      if (millis() - lastScreensaverFrame >= 40) {
-        display.desenharRobotScreensaver();
-        lastScreensaverFrame = millis();
-      }
-      lastClockUpdate = 0;
-    } 
-    // Caso contrário, renderiza o painel completo atualizado de 1 em 1 segundo
-    else if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : currentPage == PAGE_SOUND ? 100UL : 1000UL))
+    if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : currentPage == PAGE_SOUND ? 100UL : 1000UL))
     {
       if (currentPage == 0)
       {
