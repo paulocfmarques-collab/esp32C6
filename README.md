@@ -274,13 +274,15 @@ linha, em formato apropriado para leitura automática.
 ```mermaid
 sequenceDiagram
     participant Cliente as Cliente serial ou UDP
-    participant Loop as Loop principal
+    participant Principal as Loop principal
     participant Comando as CommandProcessor
     participant Servico as Serviço solicitado
-    Cliente->>Loop: Comando de texto
-    Loop->>Comando: Normalizar nome e preservar argumentos
+
+    Cliente->>Principal: Comando de texto
+    Principal->>Comando: Normalizar nome e preservar argumentos
     Comando->>Servico: Validar parâmetros e executar
     Servico-->>Comando: Resultado
+
     alt Comando recebido pela serial
         Comando-->>Cliente: Resposta no console serial
     else Comando recebido por UDP
