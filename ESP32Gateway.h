@@ -22,6 +22,7 @@ extern RGBLed rgbLed;
 #include "NetworkMonitor.h"
 #include "PortalUi.h"
 #include "LogPortal.h"
+#include "PanelPortal.h"
 #include "MetricsService.h"
 #include "Diagnostics.h"
 
@@ -395,6 +396,19 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
                   });
         server.on("/info", HTTP_GET, [this]() { handleInfo(); });
         server.on("/wifi", HTTP_GET, [this]() { handleConfig(); });
+        server.on("/telas", HTTP_GET, [this]() {
+            server.sendHeader("Cache-Control", "no-store");
+            server.send(200, "text/html; charset=utf-8", panelPortalPage());
+        });
+        server.on("/api/telas", HTTP_GET, [this]() {
+            server.sendHeader("Cache-Control", "no-store");
+            const String cards = panelPortalCards(telemetry, ssids, nextSlot());
+            if (cards.isEmpty()) {
+                server.send(503, "text/plain; charset=utf-8", "Memória insuficiente para atualizar as telas.");
+                return;
+            }
+            server.send(200, "text/html; charset=utf-8", cards);
+        });
         server.on("/logs", HTTP_GET,
                   [this]()
                   {
@@ -686,7 +700,6 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
             return;
         }
         responderUDP("Redes e configuracoes limpas. Reiniciando...\n");
-        display.println("Configuracao limpa");
         rgbLed.off();
         pendingRestart = true;
         restartAt = millis() + 1000;

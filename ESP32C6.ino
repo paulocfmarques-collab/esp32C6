@@ -12,6 +12,7 @@
 #include <esp_timer.h>
 #include <esp_system.h>
 #include "LocalSensor.h"
+#include "DigitalMic.h"
 
 constexpr uint8_t USER_BUTTON_PIN = 9; // Botao BOOT onboard da Waveshare ESP32-C6-LCD-1.47
 
@@ -23,10 +24,11 @@ SDUtil sd;
 CommandProcessor commandProcessor(display, gateway, ntp, rgbLed, sd);
 SerialConsole serialConsole;
 SoundMonitor soundMonitor;
+DigitalMic digitalMic;
 
 bool otaInicializadoCompleto = false;
 bool sdDisponivel = false;
-enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_SOUND, PAGE_LOCAL, PAGE_COUNT };
+enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_SOUND, PAGE_LOCAL, PAGE_LIGHT, PAGE_DIGITAL_MIC, PAGE_COUNT };
 
 void setup() 
 {
@@ -53,6 +55,7 @@ void setup()
   localSensor.begin();
   Serial.println("[BOOT] Leitura local iniciada; preparando display...");
   soundMonitor.begin(SoundSensorConfig::ANALOG_PIN);
+  digitalMic.begin();
   commandProcessor.setSoundMonitor(&soundMonitor);
   display.begin();
   display.setRotation(1); 
@@ -127,8 +130,6 @@ void startSdRead()
 
 void loop() 
 {
-  static bool showingDashboard = false;
-  static uint32_t responseUntil = 0;
   static uint32_t lastClockUpdate = 0;
   static uint8_t currentPage = 0;
   static uint32_t statusPageShownAt = 0;
@@ -169,7 +170,6 @@ void loop()
       {
         startSdRead();
       }
-      showingDashboard = true;
       lastClockUpdate = 0;
       statusPageShownAt = millis();
     }
@@ -211,12 +211,15 @@ void loop()
   }
   else
   {
-    int8_t ledState = WiFi.getMode() == WIFI_AP ? 1 : (WiFi.status() == WL_CONNECTED ? 0 : 2);
+    const auto mic = digitalMic.snapshot();
+    const int8_t ledState = mic.fresh() && mic.eventActive ? 3 :
+        WiFi.getMode() == WIFI_AP ? 1 : (WiFi.status() == WL_CONNECTED ? 0 : 2);
     if (ledState != lastLedState)
     {
       lastLedState = ledState;
       if (ledState == 0) rgbLed.green();
       else if (ledState == 1) rgbLed.yellow();
+      else if (ledState == 3) rgbLed.magenta();
       else rgbLed.red();
     }
   }
@@ -237,32 +240,19 @@ void loop()
   if (serialCommand || gateway.receiveCommand(comando))
   {
     display.wake();
-    display.setRotation(0);
-    showingDashboard = false;
     commandProcessor.executeCommand(comando, serialCommand);
     sdDisponivel = commandProcessor.sdReady();
-    responseUntil = millis() + 10000;
   }
 
   int pageRequest=display.takePageRequest();
   if(pageRequest!=-1){
     currentPage=pageRequest==-2 ? (currentPage+1)%PAGE_COUNT : pageRequest;
-    showingDashboard=true; display.setRotation(1); display.clear(); lastClockUpdate=0;
+    display.setRotation(1); display.clear(); lastClockUpdate=0;
     statusPageShownAt=millis();
     if(currentPage==PAGE_SD)startSdRead();
   }
   commandProcessor.update();
 
-  // Controle de estados da tela (Console Log -> Relógio/Dashboard)
-  if (!showingDashboard && static_cast<int32_t>(millis() - responseUntil) >= 0)
-  {
-    showingDashboard = true;
-    display.setRotation(1);
-    display.clear(); 
-    lastClockUpdate = 0;
-  }
-
-  if (showingDashboard)
   {
     // A consulta pode ter iniciado/terminado desde o inicio deste loop.
     portENTER_CRITICAL(&sdCacheMux);
@@ -270,14 +260,14 @@ void loop()
     sdBusy = sdReading;
     portEXIT_CRITICAL(&sdCacheMux);
     if (currentPage == PAGE_SD && sdBusy) statusPageShownAt = millis();
-    if (currentPage != 0 && currentPage != PAGE_SOUND && currentPage != PAGE_LOCAL && millis() - statusPageShownAt >= 30000)
+    if (currentPage != 0 && currentPage != PAGE_SOUND && currentPage != PAGE_LOCAL && currentPage != PAGE_LIGHT && currentPage != PAGE_DIGITAL_MIC && millis() - statusPageShownAt >= 30000)
     {
       currentPage = 0;
       display.clear();
       lastClockUpdate = 0;
     }
 
-    if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : currentPage == PAGE_SOUND ? 100UL : 1000UL))
+    if (millis() - lastClockUpdate >= ((currentPage == PAGE_SD && sdBusy) ? 70UL : (currentPage == PAGE_SOUND || currentPage == PAGE_DIGITAL_MIC) ? 100UL : currentPage == PAGE_LIGHT ? 250UL : 1000UL))
     {
       if (currentPage == 0)
       {
@@ -319,6 +309,8 @@ void loop()
       else if (currentPage == PAGE_FORECAST) display.showForecastPage();
       else if (currentPage == PAGE_SOUND) display.showSoundPage(soundMonitor);
       else if (currentPage == PAGE_LOCAL) display.showLocalSensorPage();
+      else if (currentPage == PAGE_LIGHT) display.showLightPage(soundMonitor);
+      else if (currentPage == PAGE_DIGITAL_MIC) display.showDigitalMicPage(digitalMic);
       else if (sdBusy)
       {
         sdLoadingShown = true;

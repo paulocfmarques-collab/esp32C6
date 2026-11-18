@@ -6,7 +6,7 @@ cartao. O procedimento de formatacao abaixo so se aplica apos reabilitar
 `SDCARD_ENABLED` em [DeviceConfig.h](DeviceConfig.h) e recompilar. `selftest`
 marca SD como SKIP; `crash_info` envia e limpa o panic interno apos envio bem-sucedido, sem arquivar.
 
-Revisão documental: **05/11/2026** · [Pinout e ligação do sensor](PINOUT.md). Histórico:
+Revisão documental de **17/11/2026** · [Pinout e ligação do sensor](PINOUT.md). Histórico:
 [CHANGELOG.md](CHANGELOG.md); [catálogo geral](../ESP32_Documents/COMANDOS.md).
 
 Referência do `CommandProcessor.cpp` desta atualização. Envie um comando de texto por datagrama UDP para a **porta 4210** do dispositivo. No AP de configuração, use `192.168.4.1`. O limite de entrada é **255 bytes** por comando, incluindo argumentos. Nomes de comando aceitam maiúsculas/minúsculas; SSID, senha e texto mantêm a capitalização.
@@ -90,7 +90,11 @@ Veja [PROMETHEUS.md](PROMETHEUS.md) para todas as metricas e limitacoes.
 
 | Comando | Função |
 | --- | --- |
-| `tela:N` | Seleciona a página 0 a 11; tabela abaixo. |
+| `tela:N` | Seleciona a página 0 a 13. Consulte a tabela abaixo. |
+| `ldr_escuro` / `ldr_claro` | Registra a leitura atual como 0% ou 100% na escala do LDR. |
+| `ldr_reset` | Limpa os pontos salvos da calibração. |
+| `inmp_modo:medidor\|historico\|espectro` | Escolhe a visualização do INMP441 no LCD e abre a página 13. |
+| `inmp_limite:N` | Ajusta o limite de evento sonoro do INMP441 entre −90 e 0 dBFS. |
 | `som_ganho:V` | Ganho visual de 1 a 64, padrao 32. Realca sinal e ruido, sem alterar o ganho eletrico do sensor. |
 | `som_modo:equalizador` | Mostra as 12 faixas reais de frequencia na pagina 10, modo padrao. |
 | `som_modo:historico` | Mostra o historico temporal de volume de 9,6 segundos na pagina 10. |
@@ -203,6 +207,21 @@ Layouts reconhecidos usam `VOLUME_BEGIN_EXPLICIT`: FAT direto no setor zero ou p
 | 9 | Porto Alegre: temperatura, umidade e previsao da internet |
 | 10 | Som: equalizador/historico analogico ativo no GPIO0 |
 | 11 | DHT22 local: temperatura, umidade, tendencia e estado da leitura |
+| 12 | LDR no GPIO1: nível relativo, barra e leitura ADC |
+| 13 | INMP441: medidor I²S com RMS e pico em dBFS |
+
+`tela:13` abre a página do INMP441. Use `inmp_modo:medidor` para RMS e pico, `inmp_modo:historico` para o gráfico dos últimos 30 segundos ou `inmp_modo:espectro` para as 12 faixas entre aproximadamente 63 Hz e 8 kHz.
+
+Envie os mesmos comandos pela serial ou por UDP na porta **4210**. No portal HTTP do dispositivo, **Telas** (`/telas`) mostra os painéis e os gráficos em paralelo. Os comandos de modo e limite continuam no console.
+
+`inmp_limite:-35` ajusta o disparo pelo nível RMS. Aceita valores inteiros de −90 a 0 dBFS. Três janelas consecutivas de 100 ms no limite ou acima dele contam um evento. Cinco janelas abaixo do limite menos 5 dB encerram o alerta. O LED fica magenta durante o evento quando está livre de outros comandos. O modo, o limite e o contador reiniciam com o firmware. A escala dBFS é relativa ao limite digital. `som_ganho` e `som_modo` controlam o RoboCore na página 10.
+
+`tela:12` mantém a página do LDR aberta até você navegar. A leitura ausente ou desatualizada aparece como `-- %`.
+
+1. Coloque o sensor na condição mais escura que deseja monitorar. Aguarde um segundo e envie `ldr_escuro` para registrar 0%.
+2. Coloque o sensor na condição mais clara. Aguarde um segundo e envie `ldr_claro` para registrar 100%.
+
+Os comandos funcionam pela serial e por UDP. A calibração fica salva após reiniciar. A escala é linear entre os dois valores do ADC e fica limitada a 0–100%. Enquanto faltar um ponto, a tela usa a escala bruta do ADC. Use `ldr_reset` para limpar os dois pontos e voltar à escala bruta.
 
 O DHT22 local abre com **`tela:11`** ou BOOT. DATA no GPIO3, VCC em 3V3, GND comum. Leitura a cada 2,5 s, independente de internet. Falhas nao aparecem como zero; dados com mais de 10 s sao considerados antigos. A pagina 11 fica aberta ate voce navegar, com dimmer ativo.
 
@@ -242,7 +261,7 @@ para sair. A reducao automatica de brilho continua ativa.
 Referencias: [sensor RoboCore](https://www.robocore.net/sensor-ambiente/sensor-de-som-microfone)
 e [GPIO/ADC do ESP32-C6](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/gpio.html).
 
-As páginas de informações retornam ao relógio após 30 segundos, exceto o monitor de som. Respostas de comando usam a orientação original de console por 10 segundos. `tela:N` e `tela_next` abrem o painel imediatamente.
+As páginas de informações retornam ao relógio após 30 segundos. As páginas 10 a 13 permanecem abertas enquanto selecionadas. Comandos e respostas aparecem no console serial ou UDP. No LCD, `tela:N` e `tela_next` abrem o painel solicitado imediatamente.
 
 ## Economia de iluminação
 

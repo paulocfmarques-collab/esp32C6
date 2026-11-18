@@ -1,5 +1,7 @@
 # SD: teste isolado de leitura
 
+A página 12 do LDR pertence ao firmware principal. Este sketch mantém o ADC de luminosidade inativo. [Pinout do LDR](../../PINOUT.md#ldr-de-duas-pernas)
+
 **Versao 3:** alem dos testes anteriores, imprime CSD bruto, CSD_STRUCTURE, OCR
 e CCS. Se a leitura do boot do volume falhar, compara CMD17 direto com argumento
 em setores e argumento em bytes, sem alterar o modo da SdFat. CRC7 dos comandos
@@ -12,6 +14,8 @@ nao demonstram incompatibilidade com 2 MHz ou 100 kHz. O PASS inicial a
 400 kHz enviado pelo usuario permanece um resultado valido de leitura/montagem.
 
 Preparado em **06/11/2026** para **Waveshare ESP32-C6-LCD-1.47 sem Touch**.
+
+Revisão documental de **17/11/2026**. O firmware principal usa um perfil com SD desativado. Ao restaurá-lo, a página 7 do LCD e o cartão **Cartão SD** em `/telas` mostram esse estado. As leituras deste sketch são acompanhadas pelo Monitor Serial.
 
 Este sketch substitui temporariamente o firmware principal. Nao inicializa Wi-Fi,
 OTA, display, microfone, DHT22, portal, logs ou metricas. Nao precisa dessoldar

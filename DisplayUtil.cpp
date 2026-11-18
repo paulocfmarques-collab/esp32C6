@@ -5,6 +5,7 @@
 #include "RobotScreensaver.h"
 #include "Diagnostics.h"
 #include "LocalSensor.h"
+#include "DigitalMic.h"
 #include "DeviceConfig.h"
 #include <new>
 
@@ -782,6 +783,99 @@ void DisplayUtil::showForecastPage()
     else
         snprintf(line, sizeof(line), "Dados da internet, nao do sensor local");
     drawPanelLine(16, 147, 1, 47, line, c.ultimaFalhou ? 0xFFE0 : COLOR_GRAY);
+}
+
+void DisplayUtil::showDigitalMicPage(const DigitalMic& mic)
+{
+    SharedSpi::Guard guard;
+    drawPageHeader("INMP441", "I2S");
+    const auto state = mic.snapshot();
+    const bool fresh = state.fresh();
+    const bool signal = fresh && state.hasSignal;
+    const char* status = !state.running ? "Falha ao iniciar I2S" :
+        !fresh ? "Aguardando amostras..." : "Canal sem variacao";
+    drawPanelLine(16, 48, 2, 24, signal ? String(state.rmsDbfs, 1) + " dBFS RMS" : String(status),
+                  signal ? COLOR_WHITE : 0xFFE0);
+
+    constexpr int x = 16, width = 288;
+    if (state.mode != DigitalMic::Mode::Meter) {
+        constexpr int top = 77, bottom = 137, height = bottom - top;
+        gfx->fillRect(x, top, width, height + 1, 0x18E3);
+        const auto plotY = [bottom, height](float dbfs) {
+            return bottom - int(constrain((dbfs + 90.0f) / 90.0f, 0.0f, 1.0f) * height);
+        };
+        if (state.mode == DigitalMic::Mode::History) {
+            DigitalMic::HistoryPoint points[DigitalMic::HISTORY_SIZE];
+            const size_t count = mic.history(points);
+            const uint32_t now = millis();
+            constexpr uint32_t span = DigitalMic::HISTORY_SIZE * DigitalMic::HISTORY_STEP_MS;
+            gfx->drawFastHLine(x, plotY(state.thresholdDbfs), width, 0xFFE0);
+            bool previous = false;
+            int lastX = 0, lastY = 0;
+            uint32_t lastTime = 0;
+            for (size_t i = 0; i < count; ++i) {
+                const uint32_t age = now - points[i].timestamp;
+                if (age > span) continue;
+                const int px = x + int((span - age) * (width - 1) / span);
+                const int py = plotY(points[i].rmsDbfs);
+                if (previous && uint32_t(points[i].timestamp - lastTime) <= 400)
+                    gfx->drawLine(lastX, lastY, px, py, COLOR_CYAN);
+                else gfx->drawPixel(px, py, COLOR_CYAN);
+                previous = true;
+                lastX = px;
+                lastY = py;
+                lastTime = points[i].timestamp;
+            }
+            drawPanelLine(x, 148, 1, 48, "-30 s                    0 s | RMS dBFS", COLOR_GRAY);
+        } else {
+            constexpr int column = width / DigitalMic::BAND_COUNT;
+            if (signal) {
+                for (size_t i = 0; i < DigitalMic::BAND_COUNT; ++i) {
+                    const int y = plotY(state.bands[i]);
+                    if (y < bottom) gfx->fillRect(x + int(i) * column + 2, y, column - 4, bottom - y, COLOR_CYAN);
+                }
+            }
+            drawPanelLine(x, 148, 1, 48, "63 Hz      Graves / Medios / Agudos      8 kHz", COLOR_GRAY);
+        }
+        drawPanelLine(x, 158, 1, 48, state.eventActive && fresh ? "EVENTO SONORO" : "", 0xF81F);
+        return;
+    }
+    const int filled = signal ? int(constrain((state.rmsDbfs + 90.0f) / 90.0f, 0.0f, 1.0f) * width) : 0;
+    if (filled > 0) gfx->fillRect(x, 86, filled, 12, COLOR_CYAN);
+    if (filled < width) gfx->fillRect(x + filled, 86, width - filled, 12, 0x18E3);
+    drawPanelLine(x, 108, 1, 48, signal ? String("Pico: ") + String(state.peakDbfs, 1) + " dBFS" : String("Confira VDD, GND e L/R em GND"), COLOR_GRAY);
+    char wiring[49];
+    snprintf(wiring, sizeof(wiring), "16 kHz | Canal esquerdo | SCK%d WS%d SD%d",
+             int(DigitalMic::BCLK), int(DigitalMic::WS), int(DigitalMic::DATA));
+    drawPanelLine(x, 132, 1, 48, wiring, COLOR_CYAN);
+    const String event = String(fresh && state.eventActive ? "EVENTO | " : "") +
+        "Limite " + String(state.thresholdDbfs) + " dBFS | Total " + String(state.events);
+    drawPanelLine(x, 148, 1, 48, event, fresh && state.eventActive ? 0xF81F : COLOR_GRAY);
+}
+
+void DisplayUtil::showLightPage(const SoundMonitor& sound)
+{
+    SharedSpi::Guard guard;
+    drawPageHeader("LUMINOSIDADE", "LDR");
+    const auto light = sound.lightSnapshot();
+    const bool fresh = light.fresh();
+    constexpr int x = 16, width = 288;
+    const bool calibrated = light.calibrated();
+    const int dark = calibrated ? light.dark : 0;
+    const int bright = calibrated ? light.bright : SoundMonitor::LightSnapshot::ADC_MAX;
+    const int span = bright - dark;
+    const int level = fresh ? constrain(int(light.raw) - dark, 0, span) : 0;
+    const int filled = level * width / span;
+    const int percent = (level * 100 + span / 2) / span;
+    drawPanelLine(x, 48, 4, 12, fresh ? String(percent) + " %" : String("-- %"), COLOR_WHITE);
+    if (filled > 0) gfx->fillRect(x, 94, filled, 10, COLOR_CYAN);
+    if (filled < width) gfx->fillRect(x + filled, 94, width - filled, 10, 0x18E3);
+    drawPanelLine(x, 115, 1, 48, fresh
+        ? String("GPIO1 | ADC ") + String(light.raw) + " / 4095"
+        : String("GPIO1 | Sem amostras recentes do ADC"), fresh ? COLOR_CYAN : 0xFFE0);
+    const String scale = calibrated ? String("Calibrado | 0%: ") + String(dark) + " | 100%: " + String(bright) :
+        String("Escala ADC | ldr_escuro / ldr_claro");
+    drawPanelLine(x, 146, 1, 48, scale, COLOR_GRAY);
 }
 
 void DisplayUtil::showLocalSensorPage()

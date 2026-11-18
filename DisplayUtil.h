@@ -59,6 +59,8 @@ public:
     void showForecastPage();
     void showLocalSensorPage();
     void showSoundPage(const SoundMonitor& sound);
+    void showLightPage(const SoundMonitor& sound);
+    void showDigitalMicPage(const class DigitalMic& mic);
     void clear();
     void setTextColor(uint16_t color);
     void setBackgroundColor(uint16_t color);

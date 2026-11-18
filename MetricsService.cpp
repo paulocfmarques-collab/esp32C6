@@ -2,6 +2,7 @@
 #include "CommandProcessor.h"
 #include "ClimaManager.h"
 #include "LocalSensor.h"
+#include "DigitalMic.h"
 #include "SDUtil.h"
 #include "Diagnostics.h"
 #include "PortalUi.h"
@@ -388,6 +389,13 @@ String MetricsService::exposition() const
     if (local.valid)
         sample("esp_local_sensor_data_age_seconds", String((esp_timer_get_time() - local.updatedUs) / 1000000.0, 3), localLabels);
     sample("esp_task_count", String(uxTaskGetNumberOfTasks()));
+    const auto mic = digitalMic.snapshot();
+    const bool micFresh = mic.fresh();
+    sample("sensor_inmp441_rms_dbfs", micFresh ? String(mic.rmsDbfs, 2) : String("NaN"));
+    sample("sensor_inmp441_peak_dbfs", micFresh ? String(mic.peakDbfs, 2) : String("NaN"));
+    sample("sensor_inmp441_sound_events_total", String(mic.events), "", "counter");
+    sample("sensor_inmp441_sound_event_active", micFresh && mic.eventActive ? "1" : "0");
+    sample("sensor_inmp441_threshold_dbfs", String(mic.thresholdDbfs));
     sample("esp_free_rtos_tasks", String(uxTaskGetNumberOfTasks()));
     sample("esp_heap_free_bytes", String(ESP.getFreeHeap()));
     sample("esp_heap_total_bytes", String(ESP.getHeapSize()));

@@ -1,6 +1,20 @@
 # Changelog
 
-Documentação revisada em **05/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+## 2026-11-17
+
+- Portal `/telas` com os 14 painéis em uma grade responsiva e atualização a cada dois segundos enquanto a aba está visível.
+- Console serial e UDP separados da apresentação do LCD. Comandos de navegação continuam abrindo o painel solicitado.
+- Revisados os guias de operação, ligações, comandos, métricas e diagnóstico.
+
+## 2026-11-16
+
+- Histórico de 30 segundos e espectro de 12 faixas na página do INMP441. Métricas de RMS, pico, limite, estado e total de eventos no Prometheus. O LED magenta indica evento sonoro com duração mínima e histerese.
+
+- Captura do INMP441 pelo I²S a 16 kHz, com SCK no GPIO18, WS no GPIO2 e DOUT no GPIO19. A página 13 mostra nível RMS e pico em dBFS.
+
+- Página 12 para luminosidade relativa do LDR no GPIO1, com barra, valor ADC e indicação de leitura ausente ou desatualizada. ADC contínuo compartilhado com o RoboCore no GPIO0, com taxa nominal de 20 kHz por canal.
+
+Documentação revisada em **17/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
 
 ## 2026-11-06
 

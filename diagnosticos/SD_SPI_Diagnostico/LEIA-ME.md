@@ -1,10 +1,14 @@
 # Teste isolado do SD
 
+O LDR no GPIO1 e sua página 12 pertencem ao firmware principal. Este sketch não inicia o ADC dos sensores. [Pinout do LDR](../../PINOUT.md#ldr-de-duas-pernas)
+
 Para o teste completo atual (CSD, setores repetidos, montagem e listagem somente
 de leitura), use **[SD_Leitura_Isolada](../SD_Leitura_Isolada/LEIA-ME.md)**.
 Este sketch antigo continua limitado ao CMD0.
 
-Revisão documental: **02/11/2026** · [Início](../../README.md) · [Pinout](../../PINOUT.md) · [Operação](../../LEIA-ME.md)
+Revisão documental de **17/11/2026** · [Início](../../README.md) · [Pinout](../../PINOUT.md) · [Operação](../../LEIA-ME.md)
+
+O perfil atual do firmware principal mantém o SD desativado. Use este sketch separado para testar o CMD0 com a saída no Monitor Serial a 115200 baud. Ao restaurar o firmware principal, o estado do SD aparece na página 7 e no cartão **Cartão SD** do portal `/telas`.
 
 ## Relação com o sensor de som
 

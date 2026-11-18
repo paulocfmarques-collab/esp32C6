@@ -1,6 +1,6 @@
 # Prometheus - ESP32-C6 Gateway
 
-Revisão documental: **05/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Operação](LEIA-ME.md)
+Revisão documental de **17/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Operação](LEIA-ME.md)
 
 ## Configuracao web e portas
 
@@ -226,6 +226,22 @@ a cada 15 minutos, sem consultar a API durante a coleta de `/metrics`.
 | ADC | `gpio_analog_value` | Pinos e escalas sem conflito com os perifericos existentes. |
 | MQTT | `mqtt_connected`, `mqtt_messages_sent`, `mqtt_messages_received`, `mqtt_publish_errors` | Cliente MQTT e instrumentacao de conexao, publicacao e recepcao. |
 
+## Microfone digital INMP441
+
+As séries incluem o label `device`. RMS e pico refletem a última janela de 100 ms em dBFS. A coleta publica `NaN` quando falta leitura recente. Picos entre coletas podem aparecer no histórico local ou no contador de eventos.
+
+O cartão do INMP441 em `/telas` mostra as leituras e os gráficos a partir dos dados do firmware. A página funciona pela porta 80, independentemente da coleta do Prometheus.
+
+| Métrica | Tipo | Valor |
+| --- | --- | --- |
+| `sensor_inmp441_rms_dbfs` | gauge | Nível RMS digital |
+| `sensor_inmp441_peak_dbfs` | gauge | Pico digital |
+| `sensor_inmp441_sound_events_total` | counter | Eventos sonoros desde o boot |
+| `sensor_inmp441_sound_event_active` | gauge | 1 durante um evento e 0 quando inativo |
+| `sensor_inmp441_threshold_dbfs` | gauge | Limite RMS configurado para eventos |
+
+No Grafana, use `increase(sensor_inmp441_sound_events_total[5m])` para acompanhar novos eventos. O limite padrão é −35 dBFS e pode ser ajustado com `inmp_limite`. O firmware processa o áudio em memória e publica apenas os níveis e os eventos.
+
 ## Sensor de som e GPIO0
 
 O sensor analogico RoboCore usa **GPIO0** e **3V3**, com captura ativa (`ANALOG_PIN = 0`); veja [PINOUT.md](PINOUT.md#ligação-do-sensor-de-som-robocore). A tarefa
@@ -243,7 +259,7 @@ tamanho final do binario ou comportamento fisico de NVS/SPI/rede.
 
 Roteiro:
 
-1. Confira `/info`, `/wifi`, `/logs` e `/prometheus` na porta 80 em STA e AP.
+1. Confira `/info`, `/wifi`, `/telas`, `/logs` e `/prometheus` na porta 80 em STA e AP.
 2. Salve servidor, porta 9121 e intervalo 20; confira `:9121` e `20s` no YAML.
 3. Apos um segundo, espere HTTP 200 em `http://IP:9121/metrics`, content-type
    Prometheus, 404 em `http://IP/metrics` e painel ainda na 80.
@@ -291,6 +307,8 @@ por zero. `esp_metric_supported{group="dht22"}=1` indica suporte, e
 continuam publicados apenas com leitura valida, para preservar paineis existentes.
 
 ## Sensor ambiental local DHT22
+
+O LDR no GPIO1 é exibido na página 12 do display. A escala relativa do ADC ainda não tem uma série em `/metrics` nem calibração em lux.
 
 O sensor no GPIO3 usa as mesmas familias de temperatura/umidade, com origem distinta:
 

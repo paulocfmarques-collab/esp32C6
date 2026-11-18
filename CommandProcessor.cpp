@@ -7,6 +7,8 @@
 #include "ClimaManager.h"
 #include "CrashDiagnostics.h"
 #include "LocalSensor.h"
+#include "DigitalMic.h"
+#include <stdlib.h>
 
 #include <WiFi.h>
 #include <esp_system.h>
@@ -78,7 +80,6 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     String commandLog = "> " + safeCommand + "\n";
     String message = "";
     Serial.print(commandLog);
-    display_.println("> " + safeCommand);
 
     if (command == "help")
     {
@@ -111,7 +112,12 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "wifi_list\n"
                   "net_monitor\n"
                   "net_history\n"
-                  "tela:0..11\n"
+                  "tela:0..13\n"
+                  "inmp_modo:medidor|historico|espectro\n"
+                  "inmp_limite:-90..0\n"
+                  "ldr_escuro\n"
+                  "ldr_claro\n"
+                  "ldr_reset\n"
                   "som_ganho:1..64\n"
                   "som_modo:equalizador|historico\n"
                   "tela_next\n"
@@ -192,14 +198,54 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     else if (command.startsWith("tela:"))
     {
         String arg = command.substring(5);
-        bool valid = (arg.length() == 1 && arg[0] >= '0' && arg[0] <= '9') || arg == "10" || arg == "11";
+        bool valid = (arg.length() == 1 && arg[0] >= '0' && arg[0] <= '9') || arg == "10" || arg == "11" || arg == "12" || arg == "13";
         if (valid)
         {
             display_.selectPage(arg.toInt());
             answerAll("Pagina selecionada\n", false);
         }
         else
-            answerAll("Uso: tela:0..11\n", false);
+            answerAll("Uso: tela:0..13\n", false);
+    }
+    else if (command == "ldr_escuro" || command == "ldr_claro" || command == "ldr_reset") {
+        if (!sound_) {
+            answerAll("Leitor do LDR indisponivel.\n", false);
+            return;
+        }
+        const String report = command == "ldr_reset" ? sound_->resetLightCalibration() :
+            sound_->calibrateLight(command == "ldr_escuro");
+        display_.selectPage(12);
+        answerAll(report, false);
+    }
+    else if (command.startsWith("inmp_modo:")) {
+        String value = command.substring(10);
+        value.trim();
+        value.toLowerCase();
+        DigitalMic::Mode mode;
+        if (value == "medidor") mode = DigitalMic::Mode::Meter;
+        else if (value == "historico") mode = DigitalMic::Mode::History;
+        else if (value == "espectro") mode = DigitalMic::Mode::Spectrum;
+        else {
+            answerAll("Uso: inmp_modo:medidor|historico|espectro\n", false);
+            return;
+        }
+        digitalMic.setMode(mode);
+        display_.selectPage(13);
+        answerAll("Modo INMP441: " + value + "\n", false);
+    }
+    else if (command.startsWith("inmp_limite:")) {
+        String value = command.substring(12);
+        value.trim();
+        const char* input = value.c_str();
+        char* end = nullptr;
+        const long threshold = strtol(input, &end, 10);
+        if (end == input || *end != '\0' || threshold < -90 || threshold > 0) {
+            answerAll("Uso: inmp_limite:-90..0 (dBFS)\n", false);
+            return;
+        }
+        digitalMic.setThreshold(int(threshold));
+        display_.selectPage(13);
+        answerAll("Limite INMP441: " + String(threshold) + " dBFS\n", false);
     }
     else if (command.startsWith("som_ganho:")) {
         String value = command.substring(10);

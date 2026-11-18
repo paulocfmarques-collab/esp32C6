@@ -6,9 +6,9 @@ gravacao/estatisticas e iniciada. Comandos SD, inclusive formatacao, ficam bloqu
 portal e display indicam desativacao. Sensores, tela, serial e Prometheus continuam.
 `crash_info` envia o relatorio e limpa o panic interno apos envio bem-sucedido, sem arquivar no cartao.
 
-Revisão documental: **05/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+Revisão documental de **17/11/2026** · [Início](README.md) · [Pinout](PINOUT.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
 
-Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de 172 × 320 pixels, LED RGB e microSD. Reúne console serial/UDP, portal de configuração, cinco redes Wi-Fi, NTP, clima, monitor de conexão, métricas Prometheus e sensor local DHT22/AM2302 no GPIO3. A captura de som analogico esta ativa no GPIO0; o INMP441 ainda nao esta implementado.
+Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de 172 × 320 pixels, LED RGB e microSD. Reúne console serial/UDP, portal de configuração, cinco redes Wi-Fi, NTP, clima, monitor de conexão, métricas Prometheus e sensor local DHT22/AM2302 no GPIO3. O RoboCore usa o GPIO0 e o INMP441 usa I²S.
 
 Esta atualização mantém a pinagem e o hardware dos arquivos ESP32-C6 fornecidos. Não é o firmware do ESP32-C3 com tela de 1,44 polegada.
 
@@ -134,6 +134,14 @@ A busca começa pelo último perfil conectado, quando conhecido, e percorre os c
 | 9 | Porto Alegre: clima externo e previsao diaria |
 | 10 | Som: equalizador e historico no GPIO0 |
 | 11 | Ambiente local DHT22: temperatura, umidade e tendencia |
+| 12 | Luminosidade relativa, barra e valor ADC do LDR |
+| 13 | Medidor, histórico de 30 segundos e espectro do INMP441 |
+
+Abra **Telas** no portal HTTP (`/telas`) para acompanhar os 14 painéis na rede local. Os cartões ocupam três colunas em telas largas e se atualizam a cada dois segundos enquanto a aba está visível. O cartão do INMP441 mostra medidor, histórico, espectro e alerta juntos.
+
+O texto dos comandos e das respostas fica na serial ou no UDP. O LCD continua no painel atual durante consultas como `sensor_local` e troca de página quando solicitado por um comando como `tela:13`.
+
+O LDR usa o GPIO1 e compartilha o ADC contínuo com o RoboCore no GPIO0. A página 12 usa a média das amostras e permanece aberta enquanto selecionada. [Pinout do LDR](PINOUT.md#ldr-de-duas-pernas)
 
 A captura de som (`tela:10`) esta ativa no GPIO0 (`ANALOG_PIN = 0`), usa ADC/DMA e mostra um
 equalizador de 12 faixas por FFT, com ganho visual padrao de 32x. Ajuste com
@@ -148,7 +156,7 @@ a reducao de brilho continua ativa. Detalhes: [COMANDOS.md](COMANDOS.md#páginas
 - Segure por 3 segundos e solte: reinicia.
 - Segure por 10 segundos e solte: limpa as redes salvas e reinicia. O firmware, os arquivos SD e o namespace `ntp_cfg` permanecem.
 
-As páginas voltam ao relógio após 30 segundos, exceto o monitor de som e a pagina local DHT22, que permanecem abertos. O protetor de tela está desativado. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram o brilho configurado.
+As páginas 10 a 13 permanecem abertas enquanto selecionadas. As páginas de estado voltam ao relógio após 30 segundos. O protetor de tela está desativado. O brilho padrão é 80% e cai para no máximo 20% após 2 minutos. Botão ou comando restauram o brilho configurado.
 
 O relogio mostra o estado do Wi-Fi e os dados locais; RSSI detalhado permanece nas paginas de rede. O DHT22 funciona mesmo sem Wi-Fi ou sincronizacao NTP.
 
@@ -180,7 +188,7 @@ Abra **http://IP_DA_PLACA/logs** ou clique em **Logs do SD** no portal. No AP de
 
 Console UDP: **4210**, limite de entrada **255 bytes**. Consulte [COMANDOS.md](COMANDOS.md) para sintaxe, limites e exemplos. O `help` corresponde à lista atualizada.
 
-Console serial USB: **115200 baud**, com os mesmos comandos e limite de 255 bytes por linha. Selecione Nova linha, Retorno de carro ou Ambos NL e CR no Monitor Serial. Comece por `help`; `sd_status` consulta o cartao e `tela:7` abre o painel SD com animacao de leitura. Se usar USB nativo do ESP32-C6, habilite **USB CDC On Boot** na Arduino IDE. A contagem do espaco em FAT16/FAT32 e feita em pequenos blocos para permitir atualizacoes da animacao entre leituras; em outros formatos, a contagem nativa pode pausar a tela durante a consulta.
+Use **115200 baud** na serial USB, com limite de 255 bytes por linha. Selecione Nova linha, Retorno de carro ou Ambos NL e CR no Monitor Serial e envie `help`. Para o USB nativo do ESP32-C6, habilite **USB CDC On Boot** na Arduino IDE. No perfil atual, `sd_status` e `tela:7` informam que o SD está desativado.
 
 OTA usa hostname **ESP32-C6-Gateway** e é inicializada após conexão Wi-Fi. Portal, UDP e OTA não têm autenticação configurada neste projeto; mantenha-os em uma rede confiável. Use USB para a primeira gravação.
 
@@ -212,7 +220,7 @@ OTA usa hostname **ESP32-C6-Gateway** e é inicializada após conexão Wi-Fi. Po
 
 Esta revisão atualiza a documentação e confere referências locais, estrutura Markdown e correspondência com os fontes. Não executa compilação nem gravação do firmware e não substitui testes físicos da ligação. Consulte o [histórico](CHANGELOG.md) para distinguir alterações documentais de mudanças no código.
 
-Após gravar, confira: cadastrar e listar redes; reiniciar e confirmar persistência; desligar o roteador e verificar busca/AP; restabelecer a rede; abrir páginas 8/9; consultar `net_monitor`/`net_history`; testar SD e brilho; confirmar botão e OTA na placa. Se o PWM falhar, o firmware informa no serial e usa apenas iluminação ligada/desligada.
+Após gravar, confira a reconexão Wi-Fi, a página `/telas`, a persistência da calibração do LDR e os gráficos do INMP441. Envie `sensor_local` pela serial ou UDP para verificar a resposta enquanto o LCD continua exibindo o painel. Teste o brilho, o botão e a OTA na placa. Se o PWM falhar, o firmware informa no serial e usa iluminação ligada ou desligada.
 
 Com o sensor RoboCore ligado conforme [PINOUT.md](PINOUT.md), abra `tela:10`,
 observe a resposta a sons no ambiente, acompanhe o eixo temporal e confira

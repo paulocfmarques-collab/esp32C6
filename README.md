@@ -16,7 +16,7 @@
 Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com portal local, consoles serial/UDP,
 logs no microSD, sensor local DHT22, clima de Porto Alegre e metricas para Prometheus e Grafana.
 
-Documentação revisada em **05/11/2026** · [Pinout e ligações](PINOUT.md)
+Documentação revisada em **17/11/2026** · [Pinout e ligações](PINOUT.md)
 
 [![ESP32-C6](https://img.shields.io/badge/ESP32--C6-RISC--V-0f766e?style=flat-square)](#hardware)
 [![Arduino](https://img.shields.io/badge/Arduino_Core-ESP32_3.x-00878f?style=flat-square)](#primeiros-passos)
@@ -36,7 +36,7 @@ Documentação revisada em **05/11/2026** · [Pinout e ligações](PINOUT.md)
 
 | Conectar | Acompanhar | Investigar |
 | :--- | :--- | :--- |
-| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e doze páginas no display | Logs de comandos, rede e diagnóstico no SD |
+| Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e quatorze páginas no display | Logs de comandos, rede e diagnóstico no SD |
 | Comandos por serial USB e UDP | Ping ao gateway e histórico de latência | Memória, reinícios e duração das consultas HTTP |
 | Portal local e atualização OTA | Exportador Prometheus e integração com Grafana | Consulta de core dump com `crash_info` |
 
@@ -182,6 +182,8 @@ navegador na **porta 80**.
 | Rota | Uso |
 | :--- | :--- |
 | `/info` | Informações do dispositivo e da conexão |
+| `/telas` | Quatorze cartões com dados dos painéis do LCD e gráficos dos sensores |
+| `/api/telas` | Fragmento HTML com os dados atualizados dos cartões |
 | `/wifi` | Cadastro e edição dos cinco perfis Wi-Fi |
 | `/logs` | Visualização dos logs do cartão, com atualização automática |
 | `/prometheus` | Preferências do exportador de métricas |
@@ -300,6 +302,8 @@ sequenceDiagram
 <a id="interface"></a>
 ## Display, botão e brilho
 
+No portal local, abra **Telas** (`/telas`) para acompanhar as 14 páginas do LCD em cartões. A grade tem três colunas em telas largas e se adapta em telas menores. O painel se atualiza a cada dois segundos enquanto a aba está visível.
+
 Diagnostico separado para o SD: **[teste isolado somente de leitura](diagnosticos/SD_Leitura_Isolada/LEIA-ME.md)**,
 sem inicializar tela, Wi-Fi ou sensores. Gravar por USB e restaurar a aplicacao depois.
 
@@ -315,8 +319,13 @@ Interface renovada com cabecalhos comuns, relogio com temperatura/umidade locais
 | 3–4 | Rede | 7 | Cartão SD |
 | 8 | Monitor de rede e latência | 9 | Previsão diária |
 | 10 | Som: equalizador e historico | 11 | Ambiente local DHT22 e tendência |
+| 12 | Luminosidade relativa e leitura ADC do LDR | 13 | INMP441: nível RMS e pico em dBFS |
 
-O sensor de som analogico RoboCore esta **ativo no GPIO0** (`ANALOG_PIN = 0`), na pagina `tela:10`. O INMP441 ainda nao esta implementado. Use
+Abra `tela:12` para acompanhar o LDR no GPIO1. O painel atualiza a cada 250 ms. Use `ldr_escuro` e `ldr_claro` para registrar 0% e 100% na sua faixa de luz. A calibração fica salva após reiniciar e vale também no portal. [Ligação do LDR](PINOUT.md#ldr-de-duas-pernas)
+
+O INMP441 usa I²S a 16 kHz. A página `tela:13` oferece medidor RMS e pico em dBFS, histórico de 30 segundos e espectro de 12 faixas. Eventos acima do limite ajustável sinalizam no LED RGB e aparecem no Prometheus. [Ligação do INMP441](PINOUT.md#microfone-digital-inmp441) · [Comandos](COMANDOS.md#páginas)
+
+O sensor de som analogico RoboCore esta **ativo no GPIO0** (`ANALOG_PIN = 0`), na pagina `tela:10`. Use
 VCC em **3V3** e GND comum. A captacao continua usa ADC/DMA e FFT para mostrar
 um **equalizador de 12 faixas**. O ganho visual padrao e **32x**, ajustavel com
 `som_ganho:1..64`. Use `som_modo:historico` para acompanhar os ultimos **9,6 segundos**
@@ -331,6 +340,8 @@ A escala e visual, sem medicao em decibeis. Veja a
 | Segurar por 10 segundos e soltar | Limpar redes salvas e reiniciar |
 
 O protetor de tela está desativado. Após **2 minutos** de inatividade, o brilho cai para no máximo 20%.
+
+Comandos e respostas ficam nos consoles serial e UDP. O LCD segue mostrando os painéis, e comandos como `tela:13` abrem a página solicitada.
 O brilho padrão é 80%; `tela_off` e `brilho:0` continuam disponíveis para desligamento manual.
 
 <a id="diagnostico"></a>

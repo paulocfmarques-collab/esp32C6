@@ -5,7 +5,7 @@ Os pinos SPI 6/7 continuam necessarios para a tela; nao os desconecte. Sensores
 de som (GPIO0) e DHT22 (GPIO3) permanecem ativos. A desativacao e de software,
 nao corta a alimentacao do cartao. Configuracao: [DeviceConfig.h](DeviceConfig.h).
 
-**Revisão: 05/11/2026** · [Início](README.md) · [Operação](LEIA-ME.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
+**Revisão de 17/11/2026** · [Início](README.md) · [Operação](LEIA-ME.md) · [Comandos](COMANDOS.md) · [Prometheus](PROMETHEUS.md)
 
 Guia de ligação da **Waveshare ESP32-C6-LCD-1.47**, com display ST7789 de
 172 × 320 pixels, cartão microSD, LED RGB e sensor local DHT22/AM2302. A captura analogica RoboCore esta ativa no GPIO0, sem ocupar o GPIO3 do DHT22.
@@ -23,6 +23,7 @@ conector. Na placa, `GPIO0` pode estar identificado como `IO0`.
 | :--- | :--- | :---: | :--- | :--- |
 | DHT22/AM2302 local | DATA | **3** | Bidirecional digital | Temperatura e umidade locais; pagina 11 |
 | Som legado RoboCore | Saida analogica | **0** | Entrada ADC | Ativo: `ANALOG_PIN = 0` |
+| LDR | Ponto comum do divisor de tensão | **1** | Entrada ADC | Luminosidade relativa na página 12 |
 | SPI compartilhado | SCLK | **7** | Saída | Clock do display e do microSD |
 | SPI compartilhado | MOSI | **6** | Saída | Dados para display e microSD |
 | MicroSD | MISO | **5** | Entrada | Dados vindos do cartão |
@@ -51,11 +52,39 @@ Se o modulo nao incluir pull-up, use resistor externo de 4,7 a 10 kOhm entre DAT
 
 A leitura ocorre a cada 2,5 s. `tela:11` mostra valores e tendencia das ultimas 48 tentativas; falhas deixam lacunas no grafico. A tela principal tambem mostra temperatura e umidade locais, mesmo sem NTP/Wi-Fi. Valores antigos ou falhos nao sao apresentados como leitura atual. A pagina 11 permanece aberta e conserva o dimmer.
 
-GPIO3 esta ocupado pelo DHT22: nao conectar LDR/PIR nem remapear o som analogico para esse pino simultaneamente. GPIO0/1/2 ficam reservados para a futura adaptacao do INMP441, ainda nao implementada.
+O GPIO3 fica dedicado ao DHT22 na montagem com LDR e INMP441.
+
+## Ligação do LDR e do INMP441
+
+O RoboCore permanece no GPIO0 e o LDR usa o GPIO1. O firmware lê os dois canais no mesmo driver ADC contínuo. Abra `tela:12` para ver a luminosidade relativa e a leitura bruta. O INMP441 tem captura I²S independente e usa a página `tela:13`.
+
+### LDR de duas pernas
+
+Monte o divisor de tensão com a placa desligada. O LDR não tem polaridade. Use um resistor separado de **10 kΩ**.
+
+```text
+3V3 ── LDR ──┬── GPIO1 (ADC)
+             └── resistor 10 kΩ ── GND
+```
+
+O GPIO1 é o pino marcado `1`, ao lado do GPIO0. Ligue o GPIO1 no ponto comum entre o LDR e o resistor. Nessa montagem, a tensão no GPIO1 aumenta com a luminosidade. Calibre a escala relativa com `ldr_escuro` e `ldr_claro`. [Instruções de calibração](COMANDOS.md#páginas)
+
+### Microfone digital INMP441
+
+| Pino do INMP441 | Ligar na ESP32-C6 | Função |
+| :--- | :--- | :--- |
+| VDD / VCC | **3V3** | Alimentação do módulo |
+| GND | **GND** | Terra comum |
+| SCK / BCLK | **GPIO18** | Clock de bits gerado pelo ESP32 |
+| WS / LRCLK | **GPIO2** | Seleção de canal gerada pelo ESP32 |
+| SD / DOUT | **GPIO19** | Saída de áudio do microfone e entrada I²S do ESP32 |
+| L/R | **GND** | Seleciona o canal esquerdo |
+
+O pino `SD` do microfone carrega os dados de áudio. Use **3,3 V** para alimentar o INMP441 e faça as conexões com a placa desligada. [Datasheet do INMP441](https://invensense.tdk.com/wp-content/uploads/2015/02/INMP441.pdf)
 
 ## Ligação do sensor de som RoboCore
 
-**Captura analogica ativa no GPIO0.** GPIO3 permanece reservado para o DHT22.
+**Captura analógica do RoboCore ativa no GPIO0**, inclusive na montagem planejada com LDR e INMP441.
 
 
 O adaptador legado foi preparado para o [Sensor de Som analógico da RoboCore](https://www.robocore.net/sensor-ambiente/sensor-de-som-microfone),
@@ -103,9 +132,7 @@ Use `ANALOG_PIN = -1` para desativar a captação quando o sensor não estiver
 conectado. Um pino analógico solto pode produzir valores sem significado;
 o firmware não detecta automaticamente a presença física do módulo.
 
-O adaptador legado aceita GPIO0 a GPIO3, mas **GPIO3 agora pertence ao DHT22**. Para reativar o RoboCore, use apenas GPIO0, GPIO1 ou GPIO2 e revise eventuais perifericos instalados.
-Se mudar o sinal para outro desses GPIOs, atualize a constante e a ligação.
-Não remapeie display ou SD para acomodar o sensor.
+Mantenha o sinal do RoboCore no GPIO0. O GPIO1 fica reservado ao LDR, o GPIO2 ao INMP441 e o GPIO3 ao DHT22.
 
 ### Como visualizar
 
@@ -118,11 +145,11 @@ Envie `tela:10` pela serial ou por UDP, ou navegue pelo botão BOOT.
 - `som_modo:historico` mostra os últimos **9,6 segundos**, com até **96 pontos** de amplitude pico a pico. `som_modo:equalizador` retorna às frequências.
 - A atualização visual é aproximadamente a cada **100 ms**; ganho e modo não são persistidos no reboot.
 - `ADC SATURADO` indica amostras nos limites da entrada. Ganho visual não muda a tensão, não recupera sinal saturado e não representa decibéis.
-- A página permanece aberta, sem retorno automático ao relógio nem protetor; a redução de brilho continua ativa.
+- A página permanece aberta enquanto selecionada. A redução automática de brilho continua ativa.
 - Use BOOT, `tela_next` ou `tela:N` para sair.
 
 Não é uma gravação de áudio, um osciloscópio de áudio nem uma medição calibrada
-de pressão sonora. Não há métricas Prometheus de som implementadas nesta revisão.
+de pressão sonora. As métricas de áudio no Prometheus referem-se ao INMP441. O cartão do RoboCore em `/telas` mostra seu nível relativo, espectro e histórico. [Métricas do INMP441](PROMETHEUS.md#microfone-digital-inmp441)
 O ADC contínuo assume o ADC1; não use `analogRead` em outro canal dessa unidade
 ao mesmo tempo sem adaptar o driver. Não é necessária biblioteca FFT externa.
 
@@ -140,7 +167,7 @@ flowchart LR
 O display usa **DC 15**, **RESET 21**, **BL 22** e offset horizontal de
 **34 pixels**. As páginas são apresentadas em orientação paisagem.
 
-O SD é iniciado antes do display. [SharedSpi.h](SharedSpi.h) usa um mutex
+Quando habilitado, o SD é iniciado antes do display. [SharedSpi.h](SharedSpi.h) usa um mutex
 recursivo para coordenar display, cartão e desenhos da OTA; os CS ficam
 desativados em nível alto entre operações. GPIO4, 5, 6 e 7 não devem ser
 reutilizados para o sensor de som.
@@ -149,8 +176,9 @@ reutilizados para o sensor de som.
 
 | Pinos | Situação nesta revisão |
 | :--- | :--- |
-| **GPIO0** | Sensor de som configurado por padrão |
-| **GPIO0, GPIO1 e GPIO2** | Sem periferico ativo; reservados para o futuro INMP441 |
+| **GPIO0** | OUT do RoboCore |
+| **GPIO1** | Entrada ADC do LDR |
+| **GPIO18, GPIO2 e GPIO19** | SCK, WS e SD/DOUT do INMP441, respectivamente |
 | **GPIO3** | DATA do DHT22/AM2302 local |
 | **GPIO4 a GPIO9, GPIO14, GPIO15, GPIO21 e GPIO22** | Ocupados pelas funções da tabela principal |
 | **GPIO12 e GPIO13** | USB nativo do ESP32-C6; preservar para o console e gravação USB |
@@ -167,6 +195,7 @@ o do botão integrado; não conecte o sensor nesse pino.
 | Serial USB CDC | **115200 baud**, final de linha CR, LF ou CRLF |
 | Console UDP | **4210** |
 | Portal HTTP | **80** |
+| Painéis web | **`/telas`**, no portal HTTP |
 | Prometheus `/metrics` | **9120 por padrão**, configurável em `/prometheus` |
 | OTA | ArduinoOTA após conexão Wi-Fi; hostname `ESP32-C6-Gateway` |
 
