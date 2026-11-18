@@ -13,10 +13,9 @@
 
 **Um painel de operações na palma da mão.**
 
-Firmware para a **Waveshare ESP32-C6-LCD-1.47**, com portal local, consoles serial/UDP,
-logs no microSD, sensor local DHT22, clima de Porto Alegre e metricas para Prometheus e Grafana.
+Firmware para a **Waveshare ESP32-C6-LCD-1.47 sem Touch**, com 14 painéis no LCD e no portal web, sensores de temperatura, luminosidade e som, clima de Porto Alegre e métricas para Prometheus e Grafana.
 
-Documentação revisada em **17/11/2026** · [Pinout e ligações](PINOUT.md)
+Documentação revisada em **18/11/2026** · [Pinout e ligações](PINOUT.md)
 
 [![ESP32-C6](https://img.shields.io/badge/ESP32--C6-RISC--V-0f766e?style=flat-square)](#hardware)
 [![Arduino](https://img.shields.io/badge/Arduino_Core-ESP32_3.x-00878f?style=flat-square)](#primeiros-passos)
@@ -39,6 +38,18 @@ Documentação revisada em **17/11/2026** · [Pinout e ligações](PINOUT.md)
 | Cinco perfis Wi-Fi e AP de configuração | Relógio, clima e quatorze páginas no display | Logs de comandos, rede e diagnóstico no SD |
 | Comandos por serial USB e UDP | Ping ao gateway e histórico de latência | Memória, reinícios e duração das consultas HTTP |
 | Portal local e atualização OTA | Exportador Prometheus e integração com Grafana | Consulta de core dump com `crash_info` |
+
+## Funcionalidades recentes
+
+| Recurso | Como usar |
+| :--- | :--- |
+| **Painéis web** | Abra `/telas` no portal da placa. Os 14 cartões aparecem em três colunas no desktop, com atualização a cada 2 segundos enquanto a aba está visível. |
+| **INMP441** | Abra `tela:13` ou escolha `inmp_modo:medidor`, `inmp_modo:historico` ou `inmp_modo:espectro`. O portal mostra RMS, pico, histórico de 30 segundos, 12 faixas e estado do alerta no mesmo cartão. |
+| **Eventos sonoros** | Ajuste o limite RMS com `inmp_limite:-35`. Esse é o valor padrão em dBFS. Três janelas consecutivas de 100 ms no limite ou acima dele contam um evento e o LED sinaliza em magenta quando disponível. |
+| **LDR calibrável** | Em `tela:12`, registre 0% com `ldr_escuro` e 100% com `ldr_claro`. A escala fica salva após reiniciar e vale no LCD e no portal. Use `ldr_reset` para voltar à escala bruta. |
+| **Console fora do LCD** | Envie os comandos pela serial a **115200 baud** ou por UDP na porta **4210**. O LCD continua nos painéis durante as consultas e responde aos comandos de navegação. |
+
+[Comandos e calibração](COMANDOS.md#páginas) · [Métricas do INMP441](PROMETHEUS.md#microfone-digital-inmp441)
 
 <a id="primeiros-passos"></a>
 ## Primeiros passos
@@ -114,7 +125,9 @@ flowchart LR
         UDP["UDP · 4210"]
         WEB["Navegador · HTTP 80"]
         PROM["Prometheus"]
-        MIC["Sensor RoboCore · GPIO0"]
+        MIC["RoboCore · GPIO0"]
+        LIGHT["LDR · GPIO1"]
+        DIGITAL["INMP441 · I²S"]
     end
     subgraph Firmware["ESP32-C6 Gateway"]
         LOOP["Loop principal"]
@@ -122,9 +135,10 @@ flowchart LR
         PORTAL["Portal local"]
         MET["MetricsService"]
         WEATHER["ClimaManager"]
-        SOUND["Captação contínua de som"]
+        SOUND["ADC contínuo · som e luz"]
+        AUDIO["Áudio digital · RMS, FFT e eventos"]
         CACHE["Cache de clima e SD"]
-        DISPLAY["Display e robô"]
+        DISPLAY["Display · 14 painéis"]
         DIAG["Fila de diagnóstico"]
         SPI["SharedSpi · mutex recursivo"]
     end
@@ -136,7 +150,13 @@ flowchart LR
     LOOP --> DISPLAY
     LOOP --> WEATHER
     MIC --> SOUND
+    LIGHT --> SOUND
     SOUND --> DISPLAY
+    SOUND --> PORTAL
+    DIGITAL --> AUDIO
+    AUDIO --> DISPLAY
+    AUDIO --> PORTAL
+    AUDIO --> MET
     WEATHER --> CACHE
     CACHE --> MET
     CMD --> SPI
@@ -400,14 +420,16 @@ Pinagem da **Waveshare ESP32-C6-LCD-1.47** usada neste projeto:
 | SD MISO | 5 | TFT reset | 21 |
 | SD CS | 4 | TFT backlight | 22 |
 | LED RGB | 8 | Botão BOOT | 9 |
-| Sensor de som RoboCore | 0 | — | — |
+| Sensor de som RoboCore | 0 | LDR | 1 |
+| DHT22 DATA | 3 | INMP441 WS | 2 |
+| INMP441 SCK | 18 | INMP441 DOUT | 19 |
 
 Alimentação do sensor externo: **3V3 e GND**. Esses terminais não são GPIOs.
 
 **[Pinout completo, ligação do sensor e diagrama SPI → PINOUT.md](PINOUT.md)**
 
 O ST7789 usa offset de **34 pixels** e orientação paisagem nas páginas.
-O SD é inicializado antes do display. O mutex recursivo de [SharedSpi.h](SharedSpi.h)
+Quando habilitado, o SD é inicializado antes do display. O mutex recursivo de [SharedSpi.h](SharedSpi.h)
 coordena os acessos; consultas FAT16/FAT32 liberam o barramento entre blocos.
 Uma operação lenta no cartão ainda pode atrasar a interface.
 
